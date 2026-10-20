@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>每日一练题库</title>
+<title>Questioner 智能题库</title>
 <style>
   :root{
     --bg:#f5f7f9; --card:#ffffff; --ink:#181c22; --muted:#78808b;
@@ -228,7 +228,7 @@
 <div class="wrap">
   <header id="hd">
     <div class="hd">
-      <div class="brand">每日一练题库</div>
+      <div class="brand">Questioner 智能题库</div>
       <div class="meta" id="meta"></div>
     </div>
     <div class="bar" id="barwrap"><i id="prog" style="width:0%"></i></div>
@@ -422,7 +422,7 @@ function renderHome(){
   let h='<div class="minirow">'
     +'<button class="minibtn" data-k="__favor">★ 收藏夹 <span class="cnt">'+window.FAVOR.questions.length+"</span></button>"
     +'<button class="minibtn" data-k="__flaw">错题本 <span class="cnt">'+window.FLAW.questions.length+"</span></button>"
-    +'<button class="minibtn" data-k="__import">'+icon("up")+" 导入题库</button>";
+    +'<button class="minibtn" data-k="__import">'+icon("up")+" 导入题库</button>"
     +"</div>";
   h+='<div class="sep"></div>';
   h+='<div class="home-grid">';
