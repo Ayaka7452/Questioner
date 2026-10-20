@@ -180,6 +180,9 @@
   .linkbtn:hover{color:var(--ink);}
   .backbtn{display:inline-flex; align-items:center; gap:2px; padding:7px 16px 7px 12px; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:999px; font-size:13.5px; font-weight:700; cursor:pointer; font-family:inherit; transition:border-color .15s, color .15s, background .15s;}
   .backbtn:hover{border-color:var(--accent); color:var(--accent); background:var(--accent-soft);}
+  svg.ic{width:1.05em; height:1.05em; vertical-align:-0.16em; margin-right:2px;}
+  .minibtn svg.ic{width:15px; height:15px; margin-right:0;}
+  .chip svg.ic{width:14px; height:14px; vertical-align:-0.15em; margin-right:4px;}
 
   /* ===== 成绩页 ===== */
   .score{text-align:center; padding:22px 0 16px;}
@@ -237,6 +240,13 @@
 <script src="vendor/xlsx.full.min.js"></script>
 <script>
 const DAY_N=10;
+/* 内联 SVG 图标（描边风格，currentColor 自动适配明暗主题） */
+const ICONS={
+  back:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>',
+  down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+  up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
+};
+function icon(name){return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'+ICONS[name]+'</svg>';}
 /* ============ 科目发现 ============
    服务模式下自动发现 question/ 下全部 .json（serve.py /api/list）；
    DATA_FILES 仅作 file:// 直开时的兜底登记，服务模式下无需改动。 */
@@ -412,7 +422,7 @@ function renderHome(){
   let h='<div class="minirow">'
     +'<button class="minibtn" data-k="__favor">★ 收藏夹 <span class="cnt">'+window.FAVOR.questions.length+"</span></button>"
     +'<button class="minibtn" data-k="__flaw">错题本 <span class="cnt">'+window.FLAW.questions.length+"</span></button>"
-    +'<button class="minibtn" data-k="__import">⤒ 导入题库</button>'
+    +'<button class="minibtn" data-k="__import">'+icon("up")+" 导入题库</button>";
     +"</div>";
   h+='<div class="sep"></div>';
   h+='<div class="home-grid">';
@@ -500,7 +510,7 @@ function renderModes(key){
   }
   const resetBtn=m=>'<button class="linkbtn" data-reset="'+m+'" style="margin-left:auto;font-size:12px;">重置</button>';
   const nChip=n=>'<button class="chip'+(n===10?" on":"")+'" data-n="'+n+'">'+n+" 题</button>";
-  let h='<div class="modebar"><button class="backbtn" id="backHome">‹ 返回</button><div class="t">'+esc(SUB.name)+'</div><button class="backbtn" id="expBtn" style="margin-left:auto;">⤓ 导出 Excel</button></div>';
+  let h='<div class="modebar"><button class="backbtn" id="backHome">'+icon("back")+" 返回</button><div class='t'>"+esc(SUB.name)+'</div><button class="backbtn" id="expBtn" style="margin-left:auto;">'+icon("down")+" 导出 Excel</button></div>";
   h+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:2px;">'+BANK.length+" 题"+(SUB.desc?" · "+esc(SUB.desc):"")+"</div>";
 
   /* 解析模式开关（科目级；客观题科目才显示） */
@@ -822,9 +832,9 @@ function renderImport(){
   SUB={key:"__import",name:"导入题库"};
   S=null;metaText();
   $("app").className="mode";
-  let h='<div class="modebar"><button class="backbtn" id="backHome">‹ 返回</button><div class="t">导入题库</div></div>';
+  let h='<div class="modebar"><button class="backbtn" id="backHome">'+icon("back")+" 返回</button><div class='t'>导入题库</div></div>";
   h+='<div class="mode"><div class="mt">第一步 · 模板</div><div class="ms">下载 Excel 导入模板，按模板的列结构填题（表头勿改）；题干/解析填纯文本即可，「条件」列仅充分性判断题需要，每行一条 (1)/(2)</div>'
-    +'<div class="chips"><button class="chip go" id="tplBtn">⤓ 下载导入模板</button></div></div>';
+    +'<div class="chips"><button class="chip go" id="tplBtn">'+icon("down")+" 下载导入模板</button></div></div>";
   h+='<div class="mode"><div class="mt">第二步 · 选择文件</div><div class="ms">支持 .xlsx；题干/解析可直接填纯文本（自动分段）；核心列之外的列自动识别为维度字段，逗号分隔为多值</div>'
     +'<div class="chips"><input type="file" id="impFile" accept=".xlsx,.xls" style="font-family:inherit;font-size:13px;"></div></div>';
   h+='<div class="mode" id="impPreview" style="display:none;"><div class="mt">第三步 · 确认并保存</div>'
@@ -911,7 +921,7 @@ function renderFlawList(kind){
   $("app").className="mode";
   const qs=store.questions;
   const subjects=[...new Set(qs.map(q=>q.subjectName||"?"))];
-  let h='<div class="modebar"><button class="backbtn" id="backHome">‹ 返回</button><div class="t">'+esc(store.name)+'</div></div>';
+  let h='<div class="modebar"><button class="backbtn" id="backHome">'+icon("back")+" 返回</button><div class='t'>"+esc(store.name)+'</div></div>';
   h+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:2px;">'+qs.length+" 题 · "+esc(store.desc||"")+"</div>";
   h+='<div class="mode"><div class="mt">重练</div><div class="ms">从当前筛选结果中随机抽题，独立成局</div>'
     +'<div class="chips" id="subjChips">'+["全部",...subjects].map((s,i)=>'<button class="chip'+(i===0?" on":"")+'" data-s="'+esc(s)+'">'+esc(s)+"</button>").join("")+"</div>"
