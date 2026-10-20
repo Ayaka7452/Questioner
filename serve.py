@@ -65,6 +65,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(b'{"ok":1}')
 
 if __name__ == "__main__":
+    os.chdir(ROOT)   # 静态文件与 API 同根：从任意目录启动都能正常服务
     os.makedirs(DATA, exist_ok=True)
     port = 8123
     print("serving %s on http://127.0.0.1:%d" % (ROOT, port))
