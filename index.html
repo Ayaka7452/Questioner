@@ -100,11 +100,14 @@
   }
   .subj:active{transform:scale(.985);}
   .s-ico{
-    flex:0 0 auto; width:56px; height:56px; border-radius:16px;
+    flex:0 0 auto; width:46px; height:46px; border-radius:13px;
     background:var(--accent-soft); color:var(--accent);
     display:flex; align-items:center; justify-content:center;
-    font-size:23px; font-weight:800;
+    font-size:19px; font-weight:800; line-height:1;
+    user-select:none; -webkit-user-select:none;
   }
+  /* emoji 图标：字号略大但视觉重量轻于粗体汉字，与 19px 标题更协调 */
+  .s-ico.emo{font-size:23px; font-weight:400; font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;}
   .s-main{flex:1; min-width:0;}
   .s-name{font-size:19px; font-weight:800; line-height:1.4;}
   .s-sub{font-size:13px; color:var(--muted); margin-top:3px; font-variant-numeric:tabular-nums;}
@@ -363,6 +366,7 @@ window.MERGE={banks:[]};
 async function boot(){
   window.BANKS={};
   window.BANK_DECL={};
+  window.BANK_RAW={};
   let files=DATA_FILES;
   try{
     const r=await fetch("/api/list?t="+Date.now());
@@ -376,8 +380,10 @@ async function boot(){
       const data=await r.json();
       const qs=Array.isArray(data)?data:(data.questions||[]);
       window.BANKS[file]=qs;
+      window.BANK_RAW[file]=(data&&typeof data==="object"&&!Array.isArray(data))?data:{};
       sub.name=data.name||file;
       sub.desc=data.desc||"";
+      sub.emoji=(!Array.isArray(data)&&typeof data.emoji==="string")?data.emoji.trim():"";
       window.BANK_DECL[file]=Array.isArray(data.dims)?data.dims:[];
       qs.forEach(q=>{q._src=file;q._srcName=sub.name;});
       SUBS.push(sub);
@@ -391,6 +397,11 @@ async function boot(){
   /* 合并做题范围：merge.json 持久化，localStorage 兜底 */
   try{const r=await fetch("userdata/merge.json?t="+Date.now());if(r.ok){const d=await r.json();if(d&&Array.isArray(d.banks))window.MERGE=d;}}catch(e){}
   if(!window.MERGE.banks.length){try{const c=localStorage.getItem("gk_merge_cache");if(c){const d=JSON.parse(c);if(d&&d.banks&&d.banks.length)window.MERGE=d;}}catch(e){}}
+  /* 题库图标等界面偏好：userdata/ui.json 持久化，localStorage 兜底
+     图标优先级：用户手动设置 > 题库 JSON 的 emoji 字段 > 名称首字 */
+  window.UI={icons:{}};
+  try{const r=await fetch("userdata/ui.json?t="+Date.now());if(r.ok){const d=await r.json();if(d&&d.icons)window.UI=d;}}catch(e){}
+  if(!Object.keys(window.UI.icons||{}).length){try{const c=localStorage.getItem("gk_ui_cache");if(c){const d=JSON.parse(c);if(d&&d.icons)window.UI=d;}}catch(e){}}
   /* 做题进度：proc.json 为准，localStorage 仅兜底 */
   window.PROC={sessions:{}};
   try{const r=await fetch("userdata/proc.json?t="+Date.now());if(r.ok){const d=await r.json();if(d){if(d.sessions)window.PROC.sessions=d.sessions;if(d.daily)window.PROC.daily=d.daily;}}}catch(e){}
@@ -428,6 +439,22 @@ function saveProc(){
   window._procTimer=setTimeout(()=>{window._procTimer=0;
     fetch("/api/proc",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(window.PROC)}).catch(()=>{});
   },400);
+}
+/* 界面偏好（题库图标等）：写 userdata/ui.json，localStorage 兜底 */
+function saveUI(){
+  try{localStorage.setItem("gk_ui_cache",JSON.stringify(window.UI));}catch(e){}
+  fetch("/api/ui",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(window.UI)}).catch(()=>{});
+}
+/* 题库图标取值：用户手动设置 > 题库 JSON 的 emoji 字段 > 空（回退名称首字） */
+function bankEmoji(sub){
+  const u=(window.UI&&window.UI.icons&&window.UI.icons[sub.key])||"";
+  return String(u||sub.emoji||"").trim();
+}
+function setBankEmoji(key,emo){
+  if(!window.UI) window.UI={icons:{}};
+  if(!window.UI.icons)window.UI.icons={};
+  if(emo) window.UI.icons[key]=emo; else delete window.UI.icons[key];
+  saveUI();
 }
 /* 每日一练状态 */
 function initState(key,bank){
@@ -535,9 +562,10 @@ function renderHome(){
       if(st.done){badge='<span class="tdy done">已完成 ✓</span>';arrow="✓";}
       else if(n>0){badge='<span class="tdy going">'+n+" / "+st.total+'</span>';}
     }
-    const icoCh=(sub.name||"?").trim().charAt(0);
+    const emo=bankEmoji(sub);
+    const icoTxt=emo||(sub.name||"?").trim().charAt(0);
     h+='<button class="subj" data-k="'+sub.key+'">'
-      +'<div class="s-ico">'+esc(icoCh)+"</div>"
+      +'<div class="s-ico'+(emo?" emo":"")+'" title="在「管理题库」里可改图标">'+esc(icoTxt)+"</div>"
       +'<div class="s-main"><div class="s-name">'+esc(sub.name)+"</div>"
       +'<div class="s-sub">'+bank.length+" 题"+(sub.desc?" · "+esc(sub.desc):"")+"</div></div>"
       +'<div class="s-side"><span class="edit-ico" role="button" tabindex="0" data-edit="'+sub.key+'" title="管理题库">'+icon("pen")+"</span>"+badge+'<div class="s-arrow">'+arrow+"</div></div></button>";
@@ -587,11 +615,12 @@ function renderModes(key){
   $("app").className="mode";
   const dims=collectDims([BANK],(window.BANK_DECL&&window.BANK_DECL[key])||[]);
   const st=window.PROC.sessions[key];
-  let dailyBtn="开始今日",dailyStat="每天 "+DAY_N+" 题 · 跨天自动换新";
-  if(st){
-    if(st.done){dailyBtn="重新练习";dailyStat="已完成 "+st.total+" 题";}
-    else if(st.mode==="daily"){const n=Object.keys(st.ans||{}).length;dailyBtn="继续今日";dailyStat="今日 "+n+" / "+st.total;}
-    else {const n=Object.keys(st.ans||{}).length;dailyBtn="继续练习";dailyStat="已做 "+n+" / "+st.total;}
+  /* 每日一练三态：未开始=开始练习（实心）/ 进行中=继续练习（实心）/ 已做完=再来一组（空心，与右侧一致） */
+  let dailyBtn="开始练习",dailyStat="每天 "+DAY_N+" 题 · 跨天自动换新",dailyGhost=false;
+  if(st&&st.mode==="daily"){
+    const n=Object.keys(st.ans||{}).length;
+    if(st.done){dailyBtn="再来一组";dailyStat="今日已完成 "+st.total+" 题";dailyGhost=true;}
+    else {dailyBtn="继续练习";dailyStat="今日 "+n+" / "+st.total;}
   }
   const nChip=(n,on)=>'<button class="chip'+(on?" on":"")+'" data-n="'+n+'">'+n+"</button>";
   let h='<div class="modebar" style="position:relative;"><button class="backbtn" id="backHome">'+icon("back")+" 返回</button><div class='t'>"+esc(SUB.name)+'</div><button class="gear-ico" id="gearBtn" title="更多">'+icon("gear")+'</button><div class="gearmenu" id="gearMenu"><div class="gm-t">题库</div><button data-act="export">'+icon("up")+' 导出 Excel</button><button data-act="reset" class="danger">'+icon("reset")+' 重置全部进度</button></div></div>';
@@ -601,7 +630,7 @@ function renderModes(key){
     +"</div>";
   h+='<div class="quick-grid">'
     +'<div class="mode qcard" style="margin-top:0;"><div class="mt">每日一练</div><div class="ms">'+dailyStat+'</div>'
-    +'<button class="qbtn" id="goDaily">'+dailyBtn+"</button></div>"
+    +'<button class="qbtn'+(dailyGhost?" ghost":"")+'" id="goDaily">'+dailyBtn+"</button></div>"
     +'<div class="mode qcard" style="margin-top:0;"><div class="mt">随机练习</div>'
     +'<div class="chips" id="rndN" style="margin:2px 0 12px;">'+[10,20,50].map(n=>nChip(n,n===10)).join("")+"</div>"
     +'<button class="qbtn ghost" id="goRandom">开始</button></div>'
@@ -636,7 +665,13 @@ function renderModes(key){
     if(b.dataset.act==="export") exportBank();
     else resetAllProgress(key);
   }));
-  $("goDaily").addEventListener("click",()=>{S=initState(key,BANK);S.mode="daily";S.total=DAY_N;if(S.done)renderResult();else renderQuestion();scrollTop();});
+  $("goDaily").addEventListener("click",()=>{
+    const ds=window.PROC.sessions[key];
+    if(ds&&ds.mode==="daily"&&ds.done){startDailyRerun();return;}   /* 今日卷已交卷 -> 再来一组新题 */
+    S=initState(key,BANK);S.mode="daily";S.total=S.picks.length;
+    if(S.done)renderResult();else renderQuestion();
+    scrollTop();
+  });
   let rndN=10;
   $("rndN").querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{
     $("rndN").querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));b.classList.add("on");rndN=+b.dataset.n;
@@ -673,6 +708,17 @@ function renderModes(key){
   if($("goDimAll")) $("goDimAll").addEventListener("click",()=>startDim({},BANK.length,false));
 }
 
+/* 再来一组：当日卷已交卷后，另抽一组新题（尽量避开刚做过的那组） */
+function startDailyRerun(){
+  const prev=((window.PROC.sessions[SUB.key]||{}).picks)||[];
+  const all=BANK.map(q=>q.id);
+  const fresh=all.filter(id=>prev.indexOf(id)<0);
+  const src=(fresh.length>=DAY_N)?fresh:all;
+  const picks=shuffle(src,rng(hashSeed("daily-rerun-"+SUB.key+"-"+Date.now()))).slice(0,Math.min(DAY_N,src.length));
+  S={mode:"daily",total:picks.length,picks,ans:{},idx:0,done:false};
+  saveSession(SUB.key,S);
+  renderQuestion();scrollTop();
+}
 function startRandom(n){
   const pool=BANK.map(q=>q.id);
   const picks=shuffle(pool,rng(hashSeed("rnd-"+SUB.key+"-"+Date.now()))).slice(0,Math.min(n,pool.length));
@@ -864,12 +910,20 @@ function renderBankManage(key){
   $("app").className="mode";
   let h='<div class="modebar"><button class="backbtn" id="backHome">'+icon("back")+' 返回</button><div class="t">题库管理</div></div>';
   h+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:2px;">'+bank.length+" 题 · 文件 question/"+key.replace(/^question\//,"")+"</div>";
+  const curEmo=bankEmoji(sub);
+  const emoPreset=["📘","📗","📙","🎓","📐","🧠","✏️","🎯","📊","🗂️","⭐️","🔥"];
   h+='<div class="mode"><div class="mt">基本信息</div>'
     +'<div class="chips" style="flex-wrap:wrap;gap:10px;">'
     +'<input class="imp-in" id="bmName" placeholder="题库名称" value="'+esc(sub.name)+'" style="min-width:200px;">'
     +'<input class="imp-in" id="bmDesc" placeholder="描述（可选）" value="'+esc(sub.desc||"")+'" style="min-width:260px;">'
     +'<button class="chip go" id="bmSave">保存</button></div>'
-    +'<div class="ms">保存后立即生效并写入题库文件（question/*.json 的 name / desc 字段）</div></div>';
+    +'<div class="ms" style="margin:14px 0 4px;">图标</div>'
+    +'<div class="chips" style="flex-wrap:wrap;gap:6px;align-items:center;">'
+    +'<input class="imp-in" id="bmEmoji" placeholder="留空=名称首字" maxlength="8" value="'+esc(curEmo)+'" style="width:112px;text-align:center;">'
+    +'<button class="chip" data-emo="" title="使用题库名称首字">首字</button>'
+    +emoPreset.map(e=>'<button class="chip" data-emo="'+e+'" style="font-size:15px;">'+e+'</button>').join("")
+    +'</div>'
+    +'<div class="ms">可填任意 emoji；保存在 userdata/ui.json（不改动题库文件）。题库 JSON 的 emoji 字段作为默认值，未设置时用名称首字</div></div>';
   h+='<div class="mode"><div class="mt">题目清单（'+bank.length+'）</div><div class="blist">';
   bank.forEach(q=>{
     const head=[(q.year!=null?q.year+" 年":""),(q.subject||""),(q.no!=null?"第 "+q.no+" 题":"")].filter(Boolean).join(" · ");
@@ -879,16 +933,27 @@ function renderBankManage(key){
   h+="</div></div>";
   $("app").innerHTML=h;
   $("backHome").addEventListener("click",renderHome);
+  $("app").querySelectorAll("[data-emo]").forEach(b=>b.addEventListener("click",()=>{
+    $("bmEmoji").value=b.dataset.emo;
+    $("bmEmoji").focus();
+  }));
   $("bmSave").addEventListener("click",()=>{
     const nm=($("bmName").value||"").trim();
     if(!nm){alert("题库名称不能为空。");return;}
     const ds=($("bmDesc").value||"").trim();
-    const data={name:nm,desc:ds,dims:(window.BANK_DECL&&window.BANK_DECL[key])||[],questions:window.BANKS[key]||[]};
+    const emo=($("bmEmoji").value||"").trim();
+    /* 保留题库文件里的其它自定义字段（emoji / 额外元数据），只覆盖 name/desc/dims/questions */
+    const data=Object.assign({},(window.BANK_RAW&&window.BANK_RAW[key])||{});
+    data.name=nm;data.desc=ds;
+    data.dims=(window.BANK_DECL&&window.BANK_DECL[key])||[];
+    data.questions=window.BANKS[key]||[];
     fetch("/api/bank",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({filename:key.replace(/^question\//,""),data:data})})
       .then(r=>r.json().then(j=>({ok:r.ok,j})))
       .then(({ok,j})=>{
         if(!ok){alert(j&&j.message?("保存失败："+j.message):"保存失败");return;}
         sub.name=nm;sub.desc=ds;
+        if(window.BANK_RAW) window.BANK_RAW[key]=data;
+        setBankEmoji(key,emo);   /* 图标偏好存 userdata/ui.json；留空则回退题库 emoji / 名称首字 */
         alert("已保存。");
         renderHome();
       }).catch(()=>alert("保存失败：服务不可用（需通过 python serve.py 访问）。"));

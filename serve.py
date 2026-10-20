@@ -97,7 +97,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._handle_import()
         if self.path == "/api/bank":
             return self._handle_bank()
-        API_MAP = {"/api/flaw": "flaw.json", "/api/favor": "favor.json", "/api/proc": "proc.json"}
+        API_MAP = {"/api/flaw": "flaw.json", "/api/favor": "favor.json",
+                   "/api/proc": "proc.json", "/api/ui": "ui.json"}
         if self.path not in API_MAP:
             self.send_error(404)
             return
@@ -110,7 +111,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not isinstance(data, dict):
             self.send_error(400, "bad structure")
             return
-        if self.path != "/api/proc" and "questions" not in data:
+        if self.path not in ("/api/proc", "/api/ui") and "questions" not in data:
             self.send_error(400, "bad structure")
             return
         fn = API_MAP[self.path]

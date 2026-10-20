@@ -27,6 +27,7 @@
 ```json
 {
   "name": "管综真题",
+  "emoji": "🎓",
   "desc": "2009-2025 管理类综合能力真题",
   "dims": [
     {"key": "year", "label": "年份"},
@@ -40,6 +41,7 @@
 | 字段 | 必填 | 说明 |
 |---|---|---|
 | `name` | 是 | 题库名，显示在首页卡片 |
+| `emoji` | 否 | 首页卡片图标的默认 emoji（如 `🎓`）。不填则用名称首字；用户在「管理题库」里改过的图标优先于它 |
 | `desc` | 否 | 副标题描述 |
 | `dims` | 否 | 维度声明：`key` 对应题目里的自定义字段名，`label` 是界面显示名。只影响显示文案与排序，**不声明也能用**（引擎自动从题目字段发现维度，label 直接用字段名） |
 | `questions` | 是 | 题目数组。**数组顺序即「套卷顺序」**——勾选「套卷顺序」时按此顺序作答 |
@@ -87,9 +89,9 @@
 
 ## 二、用户数据（userdata/*.json）
 
-- `proc.json`：`{"daily":{题库键:当日状态},"sessions":{题库键_模式键:会话}}`。进度绑定「题库文件路径 + 题目 id」——题库删除后重新放入（同 id），进度自动恢复。
+- `proc.json`：`{"sessions":{题库键:会话}}`——**每个题库只有一条进度**（每日一练/随机/自定义出卷共用，新开一组会覆盖上一组）。进度绑定「题库文件路径 + 题目 id」，题库删除后重新放入（同 id），进度自动恢复。
 - `flaw.json` / `favor.json`：`{"name","desc","questions":[...]}`，每条含 `subject`（题库路径）、`subjectName`（题库名）、`id` 及题目快照。
-- `merge.json`：`{"banks":[...]}` 合并做题的题库范围，自动保存。
+- `ui.json`：`{"icons":{题库键:emoji}}` 用户在「管理题库」里手动设置的题库图标（不改动 `question/*.json`）。
 - `userdata/` 整目录删除后，服务会在下次写入时自动重建；浏览器 localStorage 有同内容兜底缓存。
 
 ## 三、添加新题库（3 步）
@@ -101,5 +103,5 @@
 ## 四、serve.py API
 
 - `GET /api/list`：列出 `question/` 下全部 .json
-- `POST /api/flaw|favor|proc|merge`：写入对应 userdata 文件（原子替换；userdata 缺失自动重建；proc/merge 免 `questions` 结构检查）
+- `POST /api/flaw|favor|proc|ui`：写入对应 userdata 文件（原子替换；userdata 缺失自动重建；proc/ui 免 `questions` 结构检查）
 - 必须通过 `python serve.py` 启动；直接双击 index.html（file:// 打开）时写接口不可用，自动降级为浏览器 localStorage 暂存

@@ -1,5 +1,6 @@
 userdata/
 _check.js
+__pycache__/
 
 # 真题等受版权保护内容不入库；仓库仅提供示例题库
 question/*.json
