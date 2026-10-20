@@ -89,7 +89,23 @@
   .s-main{flex:1; min-width:0;}
   .s-name{font-size:19px; font-weight:800; line-height:1.4;}
   .s-sub{font-size:13px; color:var(--muted); margin-top:3px; font-variant-numeric:tabular-nums;}
-  .s-side{flex:0 0 auto; text-align:right;}
+  .s-side{flex:0 0 auto; text-align:right; display:flex; align-items:center; gap:10px;}
+  .subj{position:relative;}
+  .edit-ico{display:flex; align-items:center; justify-content:center; width:30px; height:30px;
+    border-radius:999px; background:var(--accent-soft); color:var(--accent); cursor:pointer;
+    opacity:0; transition:opacity .15s; border:none; padding:0;}
+  .subj:hover .edit-ico{opacity:1;}
+  .edit-ico:hover{background:var(--accent); color:#fff;}
+  .edit-ico svg.ic{width:14px; height:14px; margin:0;}
+  .brow{display:flex; gap:8px; align-items:baseline; padding:7px 4px; border-bottom:1px solid var(--line); font-size:13px;}
+  .brow:last-child{border-bottom:none;}
+  .brow .bid{color:var(--muted); font-size:11px; flex:0 0 118px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .brow .btxt{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink);}
+  .blist{max-height:380px; overflow-y:auto; margin-top:8px; border:1px solid var(--line); border-radius:10px; padding:2px 10px;}
+  .imp-in{flex:1; padding:9px 14px; border:1.5px solid var(--line); border-radius:999px; font-family:inherit; font-size:13.5px; background:var(--card); color:var(--ink); outline:none;}
+  .imp-in:focus{border-color:var(--accent);}
+  .footer a{color:var(--accent); text-decoration:none; font-weight:600;}
+  .footer a:hover{text-decoration:underline;}
   .tdy{font-size:11.5px; padding:3px 10px; border-radius:999px; background:var(--bg); color:var(--muted); font-weight:600; font-variant-numeric:tabular-nums;}
   .tdy.going{background:var(--accent-soft); color:var(--accent);}
   .tdy.done{background:var(--ok-soft); color:var(--ok);}
@@ -247,6 +263,7 @@ const ICONS={
   up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
 };
 function icon(name){return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'+ICONS[name]+'</svg>';}
+ICONS.pen='<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>';
 /* ============ 科目发现 ============
    服务模式下自动发现 question/ 下全部 .json（serve.py /api/list）；
    DATA_FILES 仅作 file:// 直开时的兜底登记，服务模式下无需改动。 */
@@ -436,12 +453,12 @@ function renderHome(){
       if(st.done){badge='<span class="tdy done">今日 ✓</span>';arrow="✓";}
       else if(n>0){badge='<span class="tdy going">'+n+" / "+DAY_N+"</span>";}
     }
-    const icon=(sub.name||"?").trim().charAt(0);
+    const icoCh=(sub.name||"?").trim().charAt(0);
     h+='<button class="subj" data-k="'+sub.key+'">'
-      +'<div class="s-ico">'+esc(icon)+"</div>"
+      +'<div class="s-ico">'+esc(icoCh)+"</div>"
       +'<div class="s-main"><div class="s-name">'+esc(sub.name)+"</div>"
       +'<div class="s-sub">'+bank.length+" 题"+(sub.desc?" · "+esc(sub.desc):"")+"</div></div>"
-      +'<div class="s-side">'+badge+'<div class="s-arrow">'+arrow+"</div></div></button>";
+      +'<div class="s-side"><button class="edit-ico" data-edit="'+sub.key+'" title="管理题库">'+icon("pen")+"</button>"+badge+'<div class="s-arrow">'+arrow+"</div></div></button>";
   });
   h+="</div>";
   $("app").innerHTML=h;
@@ -452,7 +469,11 @@ function renderHome(){
     else if(k==="__import") renderImport();
     else renderModes(k);
   }));
-  $("footer").textContent="题库共 "+Object.values(window.BANKS||{}).reduce((a,b)=>a+b.length,0)+" 题";
+  $("app").querySelectorAll("[data-edit]").forEach(b=>b.addEventListener("click",e=>{
+    e.stopPropagation();
+    renderBankManage(b.dataset.edit);
+  }));
+  $("footer").innerHTML="题库共 "+Object.values(window.BANKS||{}).reduce((a,b)=>a+b.length,0)+" 题 · <a href=\"https://github.com/Ayaka7452\" target=\"_blank\" rel=\"noopener\">关于 · GitHub @Ayaka7452</a>";
 }
 
 /* ===== 维度系统：核心字段之外的一切题目字段都是自由维度（由题库 JSON 提供，引擎不写死） ===== */
@@ -763,6 +784,46 @@ function renderResult(){
   $("home2").addEventListener("click",goBack);
   $("app").querySelectorAll(".fv2").forEach(b=>b.addEventListener("click",()=>{toggleFav(byId(b.dataset.id));renderResult();}));
   metaText();
+}
+
+/* ============ 题库管理（改名 / 描述 / 题目清单） ============ */
+function renderBankManage(key){
+  const sub=SUBS.find(s=>s.key===key);
+  const bank=(window.BANKS&&window.BANKS[key])||[];
+  SUB={key:key,name:sub.name};
+  S=null;metaText();
+  $("app").className="mode";
+  let h='<div class="modebar"><button class="backbtn" id="backHome">'+icon("back")+' 返回</button><div class="t">题库管理</div></div>';
+  h+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:2px;">'+bank.length+" 题 · 文件 question/"+key.replace(/^question\//,"")+"</div>";
+  h+='<div class="mode"><div class="mt">基本信息</div>'
+    +'<div class="chips" style="flex-wrap:wrap;gap:10px;">'
+    +'<input class="imp-in" id="bmName" placeholder="题库名称" value="'+esc(sub.name)+'" style="min-width:200px;">'
+    +'<input class="imp-in" id="bmDesc" placeholder="描述（可选）" value="'+esc(sub.desc||"")+'" style="min-width:260px;">'
+    +'<button class="chip go" id="bmSave">保存</button></div>'
+    +'<div class="ms">保存后立即生效并写入题库文件（question/*.json 的 name / desc 字段）</div></div>';
+  h+='<div class="mode"><div class="mt">题目清单（'+bank.length+'）</div><div class="blist">';
+  bank.forEach(q=>{
+    const head=[(q.year!=null?q.year+" 年":""),(q.subject||""),(q.no!=null?"第 "+q.no+" 题":"")].filter(Boolean).join(" · ");
+    const txt=String(q.stem||"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,60);
+    h+='<div class="brow"><span class="bid">'+esc(q.id)+'</span><span class="btxt">'+(head?'<span style="color:var(--muted)">'+esc(head)+"</span> · ":"")+esc(txt)+"</span></div>";
+  });
+  h+="</div></div>";
+  $("app").innerHTML=h;
+  $("backHome").addEventListener("click",renderHome);
+  $("bmSave").addEventListener("click",()=>{
+    const nm=($("bmName").value||"").trim();
+    if(!nm){alert("题库名称不能为空。");return;}
+    const ds=($("bmDesc").value||"").trim();
+    const data={name:nm,desc:ds,dims:(window.BANK_DECL&&window.BANK_DECL[key])||[],questions:window.BANKS[key]||[]};
+    fetch("/api/bank",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({filename:key.replace(/^question\//,""),data:data})})
+      .then(r=>r.json().then(j=>({ok:r.ok,j})))
+      .then(({ok,j})=>{
+        if(!ok){alert(j&&j.message?("保存失败："+j.message):"保存失败");return;}
+        sub.name=nm;sub.desc=ds;
+        alert("已保存。");
+        renderHome();
+      }).catch(()=>alert("保存失败：服务不可用（需通过 python serve.py 访问）。"));
+  });
 }
 
 /* ============ Excel 导入 / 导出 ============ */

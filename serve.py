@@ -67,9 +67,36 @@ class Handler(SimpleHTTPRequestHandler):
         os.replace(tmp, dst)
         self._json_response(200, {"ok": 1})
 
+    def _handle_bank(self):
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(n).decode("utf-8"))
+        except Exception:
+            self._json_response(400, {"message": "bad json"}); return
+        fn = str(payload.get("filename", ""))
+        data = payload.get("data")
+        if not re.match(r"^[\w()（）\-]+\.json$", fn):
+            self._json_response(400, {"message": "文件名不合法"}); return
+        dst = os.path.join(ROOT, "question", fn)
+        if not os.path.isfile(dst):
+            self._json_response(404, {"message": "题库不存在"}); return
+        if not isinstance(data, dict) or not isinstance(data.get("name"), str) or not data["name"].strip() \
+                or not isinstance(data.get("questions"), list) or not data["questions"]:
+            self._json_response(400, {"message": "题库结构不完整"}); return
+        ids = [q.get("id") for q in data["questions"]]
+        if not all(ids) or len(set(ids)) != len(ids):
+            self._json_response(400, {"message": "ID 缺失或重复"}); return
+        tmp = dst + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, dst)
+        self._json_response(200, {"ok": 1})
+
     def do_POST(self):
         if self.path == "/api/import":
             return self._handle_import()
+        if self.path == "/api/bank":
+            return self._handle_bank()
         API_MAP = {"/api/flaw": "flaw.json", "/api/favor": "favor.json", "/api/proc": "proc.json"}
         if self.path not in API_MAP:
             self.send_error(404)
