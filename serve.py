@@ -5,7 +5,7 @@
       POST /api/favor  body=收藏json  -> 写 userdata/favor.json
       POST /api/proc   body=进度json  -> 写 userdata/proc.json
 """
-import json, os, sys
+import json, os, re, sys
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -35,7 +35,41 @@ class Handler(SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def _json_response(self, code, obj):
+        body = json.dumps(obj).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_import(self):
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(n).decode("utf-8"))
+        except Exception:
+            self._json_response(400, {"message": "bad json"}); return
+        fn = str(payload.get("filename", ""))
+        data = payload.get("data")
+        if not re.match(r"^[\w()（）\-]+\.json$", fn):
+            self._json_response(400, {"message": "文件名不合法"}); return
+        if not isinstance(data, dict) or not isinstance(data.get("name"), str) \
+                or not isinstance(data.get("questions"), list) or not data["questions"]:
+            self._json_response(400, {"message": "题库结构不完整"}); return
+        ids = [q.get("id") for q in data["questions"]]
+        if not all(ids) or len(set(ids)) != len(ids):
+            self._json_response(400, {"message": "ID 缺失或重复"}); return
+        dst = os.path.join(ROOT, "question", fn)
+        if os.path.exists(dst):
+            self._json_response(409, {"message": "同名题库已存在，请换一个名称"}); return
+        tmp = dst + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, dst)
+        self._json_response(200, {"ok": 1})
+
     def do_POST(self):
+        if self.path == "/api/import":
+            return self._handle_import()
         API_MAP = {"/api/flaw": "flaw.json", "/api/favor": "favor.json", "/api/proc": "proc.json", "/api/merge": "merge.json"}
         if self.path not in API_MAP:
             self.send_error(404)

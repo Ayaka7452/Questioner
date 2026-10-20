@@ -44,7 +44,7 @@
 
   /* ===== 首页（宽布局，单列竖排） ===== */
   .home-grid{display:grid; grid-template-columns:1fr; gap:14px; margin-top:6px;}
-  .minirow{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin:8px 0 2px;}
+  .minirow{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:8px 0 2px;}
   .sep{height:1px; background:var(--line); margin:16px 0 10px;}
   .minibtn{display:flex; align-items:center; justify-content:center; gap:7px;
     background:var(--accent-soft); border:1px solid transparent; border-radius:999px;
@@ -234,6 +234,7 @@
   <div class="footer" id="footer"></div>
 </div>
 
+<script src="vendor/xlsx.full.min.js"></script>
 <script>
 const DAY_N=10;
 /* ============ 科目发现 ============
@@ -412,6 +413,7 @@ function renderHome(){
     +'<button class="minibtn" data-k="__favor">★ 收藏夹 <span class="cnt">'+window.FAVOR.questions.length+"</span></button>"
     +'<button class="minibtn" data-k="__flaw">错题本 <span class="cnt">'+window.FLAW.questions.length+"</span></button>"
     +'<button class="minibtn mix" data-k="__merge">⇄ 合并做题</button>'
+    +'<button class="minibtn" data-k="__import">⤓ 导入题库</button>'
     +"</div>";
   h+='<div class="sep"></div>';
   h+='<div class="home-grid">';
@@ -439,6 +441,7 @@ function renderHome(){
     if(k==="__flaw") renderFlawList("flaw");
     else if(k==="__favor") renderFlawList("favor");
     else if(k==="__merge") enterMerge();
+    else if(k==="__import") renderImport();
     else renderModes(k);
   }));
   $("footer").textContent="题库共 "+Object.values(window.BANKS||{}).reduce((a,b)=>a+b.length,0)+" 题";
@@ -499,7 +502,7 @@ function renderModes(key){
   }
   const resetBtn=m=>'<button class="linkbtn" data-reset="'+m+'" style="margin-left:auto;font-size:12px;">重置</button>';
   const nChip=n=>'<button class="chip'+(n===10?" on":"")+'" data-n="'+n+'">'+n+" 题</button>";
-  let h='<div class="modebar"><button class="backbtn" id="backHome">‹ 返回</button><div class="t">'+esc(SUB.name)+'</div></div>';
+  let h='<div class="modebar"><button class="backbtn" id="backHome">‹ 返回</button><div class="t">'+esc(SUB.name)+'</div><button class="backbtn" id="expBtn" style="margin-left:auto;">⤓ 导出 Excel</button></div>';
   h+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:2px;">'+BANK.length+" 题"+(SUB.desc?" · "+esc(SUB.desc):"")+"</div>";
 
   /* 解析模式开关（科目级；客观题科目才显示） */
@@ -536,6 +539,7 @@ function renderModes(key){
   $("app").innerHTML=h;
 
   $("backHome").addEventListener("click",renderHome);
+  $("expBtn").addEventListener("click",exportBank);
   $("app").querySelectorAll("[data-reset]").forEach(b=>b.addEventListener("click",()=>resetMode(key,b.dataset.reset)));
   if($("immSw")) $("immSw").addEventListener("change",e=>saveState("gk_imm_"+key,e.target.checked?"1":"0"));
   $("goDaily").addEventListener("click",()=>{S=initState(key,BANK);S.mode="daily";S.total=DAY_N;if(S.done)renderResult();else renderQuestion();scrollTop();});
@@ -870,6 +874,123 @@ function paintMix(){
     saveSession(SUB.key+"_"+sessionKey(),S);
     renderQuestion();scrollTop();
   });
+}
+
+/* ============ Excel 导入 / 导出 ============ */
+const XLSX_CORE_HEAD=["ID","题号","题型","题干","A","B","C","D","E","答案","条件","解析","选项提示","只显选项字母"];
+const XLSX_TYPE_ZH={single:"单选",suff:"充分性判断",browse:"浏览"};
+const XLSX_ZH_TYPE={};
+Object.keys(XLSX_TYPE_ZH).forEach(k=>XLSX_ZH_TYPE[XLSX_TYPE_ZH[k]]=k);
+function exportBank(){
+  if(!window.XLSX){alert("Excel 组件未加载（vendor/xlsx.full.min.js 缺失）。");return;}
+  const dims=collectDims([BANK],(window.BANK_DECL&&window.BANK_DECL[SUB.key])||[]);
+  const headers=[...XLSX_CORE_HEAD,...dims.map(d=>d.label)];
+  const rows=BANK.map(q=>{
+    const r={"ID":q.id||"","题号":q.no!=null?q.no:"","题型":XLSX_TYPE_ZH[q.type]||q.type||"单选",
+      "题干":q.stem||"","答案":q.answer||"","条件":(q.cond||[]).join("\n"),"解析":q.analysis||"",
+      "选项提示":(q.QuestionHint||[]).join("\n"),"只显选项字母":q.No_Option_Details?"是":""};
+    ["A","B","C","D","E"].forEach(k=>{r[k]=(q.options&&q.options[k])||"";});
+    dims.forEach(d=>{r[d.label]=dimVal(q,d.key).join(",");});
+    return r;
+  });
+  const ws=XLSX.utils.json_to_sheet(rows,{header:headers});
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,(SUB.name||"题库").slice(0,28));
+  XLSX.writeFile(wb,(SUB.name||"题库")+".xlsx");
+}
+function downloadTemplate(){
+  if(!window.XLSX){alert("Excel 组件未加载。");return;}
+  const headers=[...XLSX_CORE_HEAD,"年份","科目","分类"];
+  const rows=[
+    {"ID":"demo-1","题号":1,"题型":"单选","题干":"<p>示例题干，支持 HTML 段落标签。</p>","A":"选项一","B":"选项二","C":"选项三","D":"","E":"","答案":"A","条件":"","解析":"<p>解析内容。</p>","选项提示":"","只显选项字母":"","年份":2024,"科目":"示例科目","分类":"示例分类"},
+    {"ID":"demo-2","题号":2,"题型":"充分性判断","题干":"<p>条件充分性判断题干。</p>","A":"","B":"","C":"","D":"","E":"","答案":"A","条件":"(1) 条件一\n(2) 条件二","解析":"<p>解析。</p>","选项提示":"(1) 条件一充分，条件二不充分\n(2) 条件二充分，条件一不充分","只显选项字母":"是","年份":2024,"科目":"示例科目","分类":"示例分类"}
+  ];
+  const ws=XLSX.utils.json_to_sheet(rows,{header:headers});
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"导入模板");
+  XLSX.writeFile(wb,"题库导入模板.xlsx");
+}
+function renderImport(){
+  SUB={key:"__import",name:"导入题库"};
+  S=null;metaText();
+  $("app").className="mode";
+  let h='<div class="modebar"><button class="backbtn" id="backHome">‹ 返回</button><div class="t">导入题库</div></div>';
+  h+='<div class="mode"><div class="mt">第一步 · 模板</div><div class="ms">下载 Excel 导入模板，按模板的列结构填题（表头勿改）</div>'
+    +'<div class="chips"><button class="chip go" id="tplBtn">⤓ 下载导入模板</button></div></div>';
+  h+='<div class="mode"><div class="mt">第二步 · 选择文件</div><div class="ms">支持 .xlsx；核心列之外的列自动识别为维度字段，逗号分隔为多值</div>'
+    +'<div class="chips"><input type="file" id="impFile" accept=".xlsx,.xls" style="font-family:inherit;font-size:13px;"></div></div>';
+  h+='<div class="mode" id="impPreview" style="display:none;"><div class="mt">第三步 · 确认并保存</div>'
+    +'<div class="ms" id="impInfo"></div>'
+    +'<div class="chips"><input type="text" id="impName" placeholder="题库名称" style="flex:1;padding:9px 14px;border:1.5px solid var(--line);border-radius:999px;font-family:inherit;font-size:13.5px;background:var(--card);color:var(--ink);outline:none;">'
+    +'<button class="chip go" id="impSave">保存题库</button></div></div>';
+  $("app").innerHTML=h;
+  $("backHome").addEventListener("click",renderHome);
+  $("tplBtn").addEventListener("click",downloadTemplate);
+  let parsed=null;
+  $("impFile").addEventListener("change",e=>{
+    const f=e.target.files[0];if(!f)return;
+    if(!window.XLSX){alert("Excel 组件未加载（vendor/xlsx.full.min.js 缺失）。");return;}
+    const rd=new FileReader();
+    rd.onload=ev=>{
+      try{
+        const wb=XLSX.read(new Uint8Array(ev.target.result),{type:"array"});
+        parsed=parseImportRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""}),wb.SheetNames[0]);
+        $("impPreview").style.display="";
+        $("impInfo").textContent="识别 "+parsed.data.questions.length+" 题 · 维度："+(parsed.data.dims.map(d=>d.label).join("、")||"无")+" · 题型："+[...new Set(parsed.data.questions.map(q=>XLSX_TYPE_ZH[q.type]||q.type))].join("、");
+        $("impName").value=parsed.data.name;
+      }catch(err){alert("解析失败："+err.message);}
+    };
+    rd.readAsArrayBuffer(f);
+  });
+  $("impSave").addEventListener("click",()=>{
+    if(!parsed){alert("先选择并解析 Excel 文件。");return;}
+    const nm=($("impName").value||"").trim();
+    if(!nm){alert("先填写题库名称。");return;}
+    parsed.data.name=nm;
+    const fn=nm.replace(/[\\\/:*?"<>|]/g,"")+".json";
+    fetch("/api/import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({filename:fn,data:parsed.data})})
+      .then(r=>r.json().then(j=>({ok:r.ok,j})))
+      .then(({ok,j})=>{
+        if(!ok){alert(j&&j.message?("保存失败："+j.message):"保存失败");return;}
+        alert("已保存为 question/"+fn+"，页面将刷新加载新题库。");
+        location.reload();
+      }).catch(()=>alert("保存失败：服务不可用（需通过 python serve.py 访问）。"));
+  });
+}
+function parseImportRows(rows,sheetName){
+  if(!rows.length) throw new Error("表格没有数据行");
+  const decls=[];
+  Object.keys(window.BANK_DECL||{}).forEach(k=>(window.BANK_DECL[k]||[]).forEach(d=>{
+    if(!decls.find(x=>x.key===d.key))decls.push({key:d.key,label:d.label||d.key});
+  }));
+  const dimCols=Object.keys(rows[0]).filter(h=>XLSX_CORE_HEAD.indexOf(h)<0);
+  const col2dim={};
+  dimCols.forEach(col=>{
+    const hit=decls.find(d=>d.label===col);
+    col2dim[col]={key:hit?hit.key:col};
+  });
+  const qs=rows.map((r,i)=>{
+    const q={id:String(r["ID"]||"").trim(),type:XLSX_ZH_TYPE[r["题型"]]||"single",
+      stem:String(r["题干"]||""),answer:String(r["答案"]||"").trim(),analysis:String(r["解析"]||"")};
+    if(!q.id) throw new Error("第 "+(i+2)+" 行缺少 ID");
+    if(r["题号"]!=="") q.no=+r["题号"];
+    const opts={};["A","B","C","D","E"].forEach(k=>{if(String(r[k]||"").trim())opts[k]=String(r[k]);});
+    if(Object.keys(opts).length) q.options=opts;
+    if(String(r["条件"]||"").trim()) q.cond=String(r["条件"]).split("\n").map(x=>x.trim()).filter(Boolean);
+    if(String(r["选项提示"]||"").trim()) q.QuestionHint=String(r["选项提示"]).split("\n").map(x=>x.trim()).filter(Boolean);
+    if(String(r["只显选项字母"]||"").trim()) q.No_Option_Details=true;
+    dimCols.forEach(col=>{
+      const v=String(r[col]||"").trim();if(!v)return;
+      const arr=v.split(",").map(x=>x.trim()).filter(Boolean);
+      if(!arr.length)return;
+      const dk=col2dim[col].key;
+      if(arr.length>1)q[dk]=arr;else q[dk]=arr[0];
+    });
+    return q;
+  });
+  const ids=qs.map(q=>q.id);
+  if(new Set(ids).size!==ids.length) throw new Error("存在重复 ID");
+  return {data:{name:sheetName||"导入题库",desc:"来自 Excel 导入",dims:dimCols.map(col=>({key:col2dim[col].key,label:col})),questions:qs}};
 }
 
 /* ============ 错题本 / 收藏夹 列表页 ============ */
