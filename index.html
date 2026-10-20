@@ -56,10 +56,22 @@
   .minibtn.mix{background:var(--accent); color:#fff; box-shadow:0 2px 8px rgba(2,132,199,.28);}
   .minibtn.mix:hover{filter:brightness(1.07);}
   .minibtn.mix .cnt{background:rgba(255,255,255,.22); color:#fff;}
-  .minibtn.on{background:var(--accent); color:#fff; box-shadow:0 2px 8px rgba(2,132,199,.28);}
-  .minibtn.on .cnt{background:rgba(255,255,255,.22); color:#fff;}
-  .extrabox{margin:10px 0 2px; display:flex; justify-content:center;}
-  .extrabox[hidden]{display:none;}
+  /* ===== 动效 ===== */
+  @keyframes fadeUp{from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:none;}}
+  @keyframes popIn{from{opacity:0; transform:scale(.94);} to{opacity:1; transform:scale(1);}}
+  .card,.mode,.res{animation:fadeUp .28s ease both;}
+  .subj{animation:fadeUp .3s ease both;}
+  .home-grid .subj:nth-child(2){animation-delay:.04s;}
+  .home-grid .subj:nth-child(3){animation-delay:.08s;}
+  .home-grid .subj:nth-child(4){animation-delay:.12s;}
+  .home-grid .subj:nth-child(5){animation-delay:.16s;}
+  .subj:hover{transform:translateY(-2px); border-color:var(--accent); box-shadow:0 8px 20px rgba(2,132,199,.12);}
+  .chip{transition:border-color .15s, background .15s, color .15s, transform .12s;}
+  .chip:active,.opt:active,.minibtn:active,.backbtn:active,.btn:active{transform:scale(.96);}
+  .im-result{animation:fadeUp .25s ease both;}
+  .ring>div{animation:popIn .35s ease both;}
+  .scope-note{animation:fadeUp .25s ease both;}
+  @media (prefers-reduced-motion: reduce){.card,.mode,.res,.subj,.im-result,.ring>div,.scope-note{animation:none;}}
   .subj{
     display:flex; align-items:center; gap:16px; width:100%;
     background:var(--card); border:1px solid var(--line); border-radius:18px;
@@ -231,6 +243,7 @@ const DATA_FILES=["question/math.json","question/logic.json","question/writing.j
 let SUBS=[];
 window.FLAW={name:"错题本",desc:"答错的题自动收录",questions:[]};
 window.FAVOR={name:"收藏夹",desc:"收藏的题目",questions:[]};
+window.MERGE={banks:[]};
 async function boot(){
   window.BANKS={};
   let files=DATA_FILES;
@@ -257,6 +270,9 @@ async function boot(){
   if(!window.FLAW.questions.length){try{const c=localStorage.getItem("gk_flaw_cache");if(c){const d=JSON.parse(c);if(d&&d.questions&&d.questions.length)window.FLAW=d;}}catch(e){}}
   try{const r=await fetch("userdata/favor.json?t="+Date.now());if(r.ok){const d=await r.json();if(d&&d.questions)window.FAVOR=d;}}catch(e){}
   if(!window.FAVOR.questions.length){try{const c=localStorage.getItem("gk_favor_cache");if(c){const d=JSON.parse(c);if(d&&d.questions&&d.questions.length)window.FAVOR=d;}}catch(e){}}
+  /* 合并做题范围：merge.json 持久化，localStorage 兜底 */
+  try{const r=await fetch("userdata/merge.json?t="+Date.now());if(r.ok){const d=await r.json();if(d&&Array.isArray(d.banks))window.MERGE=d;}}catch(e){}
+  if(!window.MERGE.banks.length){try{const c=localStorage.getItem("gk_merge_cache");if(c){const d=JSON.parse(c);if(d&&d.banks&&d.banks.length)window.MERGE=d;}}catch(e){}}
   /* 做题进度：proc.json 为准，localStorage 仅兜底 */
   window.PROC={daily:{},sessions:{}};
   try{const r=await fetch("userdata/proc.json?t="+Date.now());if(r.ok){const d=await r.json();if(d){window.PROC.daily=d.daily||{};window.PROC.sessions=d.sessions||{};}}}catch(e){}
@@ -330,6 +346,10 @@ function saveFavor(){
   try{localStorage.setItem("gk_favor_cache",JSON.stringify(window.FAVOR));}catch(e){}
   fetch("/api/favor",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(window.FAVOR)}).catch(()=>{});
 }
+function saveMerge(){
+  try{localStorage.setItem("gk_merge_cache",JSON.stringify(window.MERGE));}catch(e){}
+  fetch("/api/merge",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(window.MERGE)}).catch(()=>{});
+}
 /* 答错自动收录：按 科目+id 去重，累计错次 */
 function pushFlaw(q,myAns,source){
   const subject=q.subject!==undefined?q.subject:(q._src||SUB.key);
@@ -374,7 +394,7 @@ const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"
 function metaText(){
   const bw=$("barwrap");
   if(!S){$("meta").textContent="";bw.classList.remove("on");$("prog").style.width="0%";return;}
-  const mn=S.mode==="daily"?"每日一练":(S.mode==="random"?"随机练习":(S.mode==="year"?S.year+" 年套卷":(S.mode==="flaw"?"错题重练":(S.mode==="favor"?"收藏重练":(S.mode==="mix"?"混合练习":"分类练习")))));
+  const mn=S.mode==="daily"?"每日一练":(S.mode==="random"?"随机练习":(S.mode==="year"?S.year+" 年套卷":(S.mode==="flaw"?"错题重练":(S.mode==="favor"?"收藏重练":(S.mode==="mix"?"合并练习":"分类练习")))));
   $("meta").textContent=mn+" · "+(S.done?"已交卷":(S.idx)+" / "+S.total);
   bw.classList.add("on");
   $("prog").style.width=(S.done?100:(S.idx/S.total*100))+"%";
@@ -388,9 +408,8 @@ function renderHome(){
   let h='<div class="minirow">'
     +'<button class="minibtn" data-k="__favor">★ 收藏夹 <span class="cnt">'+window.FAVOR.questions.length+"</span></button>"
     +'<button class="minibtn" data-k="__flaw">错题本 <span class="cnt">'+window.FLAW.questions.length+"</span></button>"
-    +'<button class="minibtn" id="extraBtn">＋ 附加功能</button>'
+    +'<button class="minibtn mix" data-k="__merge">⇄ 合并做题</button>'
     +"</div>";
-  h+='<div class="extrabox" id="extraBox" hidden><button class="minibtn mix" data-k="__mix">⇄ 混合练习</button></div>';
   h+='<div class="sep"></div>';
   h+='<div class="home-grid">';
   SUBS.forEach(sub=>{
@@ -416,10 +435,9 @@ function renderHome(){
     const k=b.dataset.k;
     if(k==="__flaw") renderFlawList("flaw");
     else if(k==="__favor") renderFlawList("favor");
-    else if(k==="__mix") renderMix();
+    else if(k==="__merge") enterMerge();
     else renderModes(k);
   }));
-  $("extraBtn").addEventListener("click",()=>{const b=$("extraBox");b.hidden=!b.hidden;$("extraBtn").classList.toggle("on",!b.hidden);});
   $("footer").textContent="题库共 "+Object.values(window.BANKS||{}).reduce((a,b)=>a+b.length,0)+" 题";
 }
 
@@ -682,8 +700,8 @@ function renderResult(){
   metaText();
 }
 
-/* ============ 混合练习 ============ */
-/* 混合筛选维度由题库 JSON 提供，不写死；某维度需所有选题库都含该字段才算「共有」 */
+/* ============ 合并做题 ============ */
+/* 合并范围（题库选择）自动保存；筛选维度由题库 JSON 提供，不写死，仅共有字段可用 */
 const MIX_DIMS=[
   {key:"year",label:"按年份练习",get:q=>q.year==null?null:+q.year},
   {key:"tags",label:"按分类练习",get:q=>(q.tags||[])}
@@ -702,23 +720,55 @@ function mixSharedDims(){
   }
   return out;
 }
-function renderMix(){
-  SUB={key:"__mix",name:"混合练习"};
+function scopeSummary(){
+  return [...MX.banks].map(k=>{const s=SUBS.find(x=>x.key===k);return s?s.name:k;}).join("、")||"（未选择）";
+}
+function enterMerge(){
+  SUB={key:"__mix",name:"合并练习"};
   S=null;metaText();
-  MX={banks:new Set(SUBS.filter(s=>(window.BANKS[s.key]||[]).length).map(s=>s.key)),f:{},n:10};
+  const saved=window.MERGE.banks.filter(k=>(window.BANKS[k]||[]).length);
+  if(saved.length){MX={banks:new Set(saved),f:{},n:10};$("app").className="mode";paintMix();}
+  else{$("app").className="mode";renderMergeScopeBody();}
+}
+function renderMergeScope(){
+  SUB={key:"__mix",name:"合并练习"};
+  S=null;metaText();
   $("app").className="mode";
-  paintMix();
+  renderMergeScopeBody();
+}
+function renderMergeScopeBody(){
+  const banks=SUBS.filter(s=>(window.BANKS[s.key]||[]).length);
+  const sel=new Set(MX.banks);
+  let h='<div class="modebar"><button class="backbtn" id="backHome">‹ 返回</button><div class="t">合并范围</div></div>';
+  h+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:2px;">选择要合并的题库，设置自动保存，之后可从配置页再次修改</div>';
+  h+='<div class="mode scope-note"><div class="mt">选择题库</div><div class="chips" id="scopeChips">'
+    +'<button class="chip" data-all="1">全部</button>'
+    +banks.map(s=>'<button class="chip" data-k="'+s.key+'">'+esc(s.name)+" ("+((window.BANKS[s.key]||[]).length)+")</button>").join("")
+    +"</div></div>";
+  h+='<div class="chips"><button class="chip go" id="goScope">保存并继续</button></div>';
+  $("app").innerHTML=h;
+  $("backHome").addEventListener("click",renderHome);
+  const chips=$("scopeChips").querySelectorAll(".chip");
+  const refresh=()=>{const all=sel.size===banks.length;chips.forEach(b=>{if(b.dataset.all)b.classList.toggle("on",all);else b.classList.toggle("on",sel.has(b.dataset.k));});};
+  refresh();
+  chips.forEach(b=>b.addEventListener("click",()=>{
+    if(b.dataset.all){if(sel.size===banks.length)sel.clear();else banks.forEach(s=>sel.add(s.key));}
+    else{const k=b.dataset.k;if(sel.has(k))sel.delete(k);else sel.add(k);}
+    refresh();
+  }));
+  $("goScope").addEventListener("click",()=>{
+    if(!sel.size){alert("至少选择一个题库。");return;}
+    window.MERGE={banks:[...sel]};saveMerge();
+    MX={banks:new Set(sel),f:{},n:10};
+    paintMix();
+  });
 }
 function paintMix(){
   const dims=mixSharedDims();
   Object.keys(MX.f).forEach(k=>{if(!dims.find(d=>d.dim.key===k)) delete MX.f[k];});  /* 取消题库后剔除不再共有的筛选值 */
-  let h='<div class="modebar"><button class="backbtn" id="backHome">‹ 返回</button><div class="t">混合练习</div></div>';
-  h+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:2px;">多选题库混合抽题，不计入各科目每日进度</div>';
-  h+='<div class="mode"><div class="mt">选择题库</div><div class="chips" id="mixChips">'
-    +SUBS.map(s=>{const n=((window.BANKS&&window.BANKS[s.key])||[]).length;
-      if(!n) return "";
-      return '<button class="chip'+(MX.banks.has(s.key)?" on":"")+'" data-k="'+s.key+'">'+esc(s.name)+" ("+n+")</button>";}).join("")
-    +"</div></div>";
+  let h='<div class="modebar"><button class="backbtn" id="backHome">‹ 返回</button><div class="t">合并练习</div></div>';
+  h+='<div class="mode"><div class="qh" style="margin:0;">当前范围 <b>'+esc(scopeSummary())+'</b>'
+    +'<button class="linkbtn" id="editScope" style="margin-left:auto;">修改范围</button></div></div>';
   if(!dims.length){
     h+='<div style="font-size:12.5px;color:var(--muted);margin:4px 0 2px;">所选题库没有共有的可筛选字段，仅支持全部乱斗。</div>';
   }else{
@@ -734,15 +784,10 @@ function paintMix(){
   h+='<div class="mode"><div class="mt">题量</div><div class="chips" id="mixN">'
     +[10,20,50].map(n=>'<button class="chip'+(n===MX.n?" on":"")+'" data-n="'+n+'">'+n+" 题</button>").join("")
     +"</div></div>";
-  h+='<div class="chips"><button class="chip go" id="goMix">开始混合练习</button></div>';
+  h+='<div class="chips"><button class="chip go" id="goMix">开始合并练习</button></div>';
   $("app").innerHTML=h;
   $("backHome").addEventListener("click",renderHome);
-  $("mixChips").querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{
-    const k=b.dataset.k;
-    if(MX.banks.has(k)) MX.banks.delete(k); else MX.banks.add(k);
-    if(!MX.banks.size) MX.banks.add(k);  /* 至少保留一个题库 */
-    paintMix();
-  }));
+  $("editScope").addEventListener("click",renderMergeScope);
   if(dims.length){
     dims.forEach(d=>{
       const wrap=document.querySelector('.chips[data-dim="'+d.dim.key+'"]');
