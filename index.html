@@ -106,6 +106,16 @@
   .imp-in:focus{border-color:var(--accent);}
   .footer a{color:var(--accent); text-decoration:none; font-weight:600;}
   .footer a:hover{text-decoration:underline;}
+  .quick-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;}
+  .qbtn{display:block; width:100%; background:var(--accent); color:#fff; border:none; border-radius:999px; padding:9px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; transition:filter .15s, transform .12s;}
+  .qbtn:hover{filter:brightness(1.08);}
+  .qbtn:active{transform:scale(.98);}
+  .qbtn.ghost{background:var(--card); color:var(--accent); border:1.5px solid var(--accent);}
+  .qbtn.wide{margin-top:10px; padding:10px;}
+  .dimcount{margin-left:auto; font-size:11.5px; color:var(--accent); background:var(--accent-soft); border-radius:999px; padding:2px 9px; font-variant-numeric:tabular-nums;}
+  .dimbar{display:flex; align-items:center; gap:6px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:10px; margin-top:4px;}
+  .dimbar .chips{margin:0;}
+  .rstline{text-align:center; margin-top:14px; font-size:12px; color:var(--muted);}
   .tdy{font-size:11.5px; padding:3px 10px; border-radius:999px; background:var(--bg); color:var(--muted); font-weight:600; font-variant-numeric:tabular-nums;}
   .tdy.going{background:var(--accent-soft); color:var(--accent);}
   .tdy.done{background:var(--ok-soft); color:var(--ok);}
@@ -515,7 +525,7 @@ function collectDims(banks,decl){
   return out;
 }
 
-/* ============ 模式页（二级） ============ */
+/* ============ 模式页（方案 A：双卡快速开始 + 自定义出卷） ============ */
 function renderModes(key){
   SUB=SUBS.find(s=>s.key===key);
   BANK=(window.BANKS&&window.BANKS[key])||[];
@@ -523,73 +533,86 @@ function renderModes(key){
   $("app").className="mode";
   const dims=collectDims([BANK],(window.BANK_DECL&&window.BANK_DECL[key])||[]);
   const st=window.PROC.daily[key];
-  let dailyBtn="开始今日";
+  let dailyBtn="开始今日 →",dailyStat="每天 "+DAY_N+" 题 · 跨天自动换新";
   if(st&&st.date===todayKey()){
     const n=Object.keys(st.ans||{}).length;
-    if(st.done) dailyBtn="今日已完成 · 重新练习";
-    else if(n>0) dailyBtn="继续今日（"+n+" / "+DAY_N+"）";
+    if(st.done){dailyBtn="重新练习";dailyStat="今日已完成 ✓";}
+    else if(n>0){dailyBtn="继续今日 →";dailyStat="今日 "+n+" / "+DAY_N;}
   }
-  const resetBtn=m=>'<button class="linkbtn" data-reset="'+m+'" style="margin-left:auto;font-size:12px;">重置</button>';
-  const nChip=n=>'<button class="chip'+(n===10?" on":"")+'" data-n="'+n+'">'+n+" 题</button>";
+  const nChip=(n,on)=>'<button class="chip'+(on?" on":"")+'" data-n="'+n+'">'+n+"</button>";
   let h='<div class="modebar"><button class="backbtn" id="backHome">'+icon("back")+" 返回</button><div class='t'>"+esc(SUB.name)+'</div><button class="backbtn" id="expBtn" style="margin-left:auto;">'+icon("down")+" 导出 Excel</button></div>";
-  h+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:2px;">'+BANK.length+" 题"+(SUB.desc?" · "+esc(SUB.desc):"")+"</div>";
-
-  /* 解析模式开关（科目级；客观题科目才显示） */
-  if(!BANK.every(q=>q.type==="browse")){
-    const imm=loadState("gk_imm_"+key)==="1";
-    h+='<div class="setrow"><div class="st"><div class="t1">解析模式</div><div class="t2">答完一题立即显示答案与解析，而不是自动进入下一题</div></div>'
-      +'<label class="sw"><input type="checkbox" id="immSw"'+(imm?" checked":"")+'><i></i></label></div>';
-  }
-
-  h+='<div class="mode"><div class="tagrow" style="margin-bottom:0;"><div class="mt">每日一练</div>'+resetBtn("daily")+'</div><div class="ms">每天 '+DAY_N+' 题，跨天自动换新</div>'
-    +'<div class="chips"><button class="chip go" id="goDaily">'+dailyBtn+"</button></div></div>";
-
-  h+='<div class="mode"><div class="tagrow" style="margin-bottom:0;"><div class="mt">随机练习</div>'+resetBtn("random")+'</div><div class="ms">从本科目全部题库随机抽题，不计入每日进度</div>'
-    +'<div class="chips" id="rndN">'+[10,20,50].map(nChip).join("")+"</div>"
-    +'<div class="chips"><button class="chip go" id="goRandom">开始随机练习</button></div></div>';
-
-  /* 按维度练习：维度与取值全部来自题库 JSON 自带字段，引擎不写死 */
-  h+='<div class="mode"><div class="tagrow" style="margin-bottom:0;"><div class="mt">按维度练习</div>'+resetBtn("dim")+'</div><div class="ms">筛选维度由题库自带字段提供：同维度取并集、跨维度取交集；勾选「套卷顺序」按原卷顺序整卷作答</div>';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin:0 2px 2px;">'
+    +'<span style="font-size:12.5px;color:var(--muted);">'+BANK.length+" 题"+(SUB.desc?" · "+esc(SUB.desc):"")+"</span>"
+    +((!BANK.every(q=>q.type==="browse"))?'<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);">解析模式<label class="sw"><input type="checkbox" id="immSw"'+(loadState("gk_imm_"+key)==="1"?" checked":"")+'><i></i></label></span>':"")
+    +"</div>";
+  h+='<div class="quick-grid">'
+    +'<div class="mode" style="margin-top:0;"><div class="mt">每日一练</div><div class="ms">'+dailyStat+'</div>'
+    +'<button class="qbtn" id="goDaily">'+dailyBtn+"</button></div>"
+    +'<div class="mode" style="margin-top:0;"><div class="mt">随机练习</div>'
+    +'<div class="chips" id="rndN" style="margin:2px 0 10px;">'+[10,20,50].map(n=>nChip(n,n===10)).join("")+"</div>"
+    +'<button class="qbtn ghost" id="goRandom">开始 →</button></div>'
+    +"</div>";
+  h+='<div class="mode"><div class="tagrow" style="margin-bottom:0;"><div class="mt">自定义出卷</div><span class="dimcount" id="dimCount"></span></div>';
   if(!dims.length){
-    h+='<div class="ms" style="opacity:.6;">本题库没有自定义维度字段，仅支持每日/随机练习</div></div>';
+    h+='<div class="ms" style="opacity:.6;">本题库没有自定义维度字段</div>';
+    h+='<button class="qbtn wide" id="goDimAll">全部乱抽 →</button></div>';
   }else{
-    h+='<div class="chips" id="dimOrd"><button class="chip" data-o="1">套卷顺序</button></div>';
     dims.forEach(d=>{
       const c=new Set();BANK.forEach(q=>dimVal(q,d.key).forEach(v=>c.add(v)));
       const vals=[...c];
       const allNum=vals.every(v=>/^-?\d+(\.\d+)?$/.test(v));
       vals.sort(allNum?(a,b)=>parseFloat(b)-parseFloat(a):(a,b)=>String(a).localeCompare(String(b),"zh"));
-      h+='<div class="ms" style="margin:10px 0 2px;font-weight:700;color:var(--muted);font-size:12px;">'+esc(d.label)+'</div>';
+      h+='<div class="ms" style="margin:8px 0 2px;color:var(--muted);font-size:12px;">'+esc(d.label)+'</div>';
       h+='<div class="chips" data-dim="'+d.key+'">'+vals.map(v=>'<button class="chip" data-v="'+esc(v)+'">'+esc(v)+"</button>").join("")+"</div>";
     });
-    h+='<div class="chips" id="dimN">'+[10,20,50].map(nChip).join("")+"</div>";
-    h+='<div class="chips"><button class="chip go" id="goDim">开始练习</button></div></div>';
+    h+='<div class="dimbar"><span style="color:var(--muted);font-size:12px;">题量</span>'
+      +'<span class="chips" id="dimN">'+[10,20,50].map(n=>nChip(n,n===10)).join("")+'<button class="chip" data-n="all">整卷</button></span>'
+      +'<label style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;">套卷顺序<label class="sw"><input type="checkbox" id="ordSw"><i></i></label></label>'
+      +"</div>";
+    h+='<button class="qbtn wide" id="goDim">开始练习 →</button></div>';
   }
+  h+='<div class="rstline">重置进度：<button class="linkbtn" data-reset="daily">每日</button> · <button class="linkbtn" data-reset="random">随机</button> · <button class="linkbtn" data-reset="dim">自定义</button></div>';
   $("app").innerHTML=h;
 
   $("backHome").addEventListener("click",renderHome);
   $("expBtn").addEventListener("click",exportBank);
-  $("app").querySelectorAll("[data-reset]").forEach(b=>b.addEventListener("click",()=>resetMode(key,b.dataset.reset)));
   if($("immSw")) $("immSw").addEventListener("change",e=>saveState("gk_imm_"+key,e.target.checked?"1":"0"));
+  $("app").querySelectorAll("[data-reset]").forEach(b=>b.addEventListener("click",()=>resetMode(key,b.dataset.reset)));
   $("goDaily").addEventListener("click",()=>{S=initState(key,BANK);S.mode="daily";S.total=DAY_N;if(S.done)renderResult();else renderQuestion();scrollTop();});
-  const chipGroup=(id,fn)=>$(id).querySelectorAll(".chip[data-n]").forEach(b=>b.addEventListener("click",()=>{
-    $(id).querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));b.classList.add("on");fn(+b.dataset.n);
+  let rndN=10;
+  $("rndN").querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{
+    $("rndN").querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));b.classList.add("on");rndN=+b.dataset.n;
   }));
-  let rndN=10;chipGroup("rndN",n=>rndN=n);
-  let tpN=10;if($("tpN"))chipGroup("tpN",n=>tpN=n);
   $("goRandom").addEventListener("click",()=>startRandom(rndN));
-  $("app").querySelectorAll('.chips[data-dim]').forEach(wrap=>wrap.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>b.classList.toggle("on"))));
-  if($("dimOrd")) $("dimOrd").querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>b.classList.toggle("on")));
-  let dimN=10;if($("dimN"))chipGroup("dimN",n=>dimN=n);
-  if($("goDim")) $("goDim").addEventListener("click",()=>{
-    const sel={};let any=false;
-    $("app").querySelectorAll('.chips[data-dim]').forEach(wrap=>{
+  const readSel=()=>{
+    const sel={};
+    $("app").querySelectorAll(".chips[data-dim]").forEach(wrap=>{
       const vs=[...wrap.querySelectorAll(".chip.on")].map(b=>b.dataset.v);
-      if(vs.length){sel[wrap.dataset.dim]=vs;any=true;}
+      if(vs.length) sel[wrap.dataset.dim]=vs;
     });
-    if(!any){alert("先选至少一个筛选值。");return;}
-    startDim(sel,dimN,$("dimOrd")&&[...$("dimOrd").querySelectorAll(".chip.on")].length>0);
+    return sel;
+  };
+  const poolCount=sel=>{
+    const ks=Object.keys(sel);
+    return ks.length?BANK.filter(q=>ks.every(k=>sel[k].some(v=>dimVal(q,k).includes(v)))).length:BANK.length;
+  };
+  const updateCount=()=>{
+    if(!$("dimCount"))return;
+    $("dimCount").textContent="已选 "+poolCount(readSel())+" 题";
+  };
+  $("app").querySelectorAll(".chips[data-dim]").forEach(wrap=>wrap.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{b.classList.toggle("on");updateCount();})));
+  let dimN=10,dimAll=false;
+  if($("dimN")) $("dimN").querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{
+    $("dimN").querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));b.classList.add("on");
+    if(b.dataset.n==="all"){dimAll=true;}else{dimN=+b.dataset.n;dimAll=false;}
+  }));
+  updateCount();
+  if($("goDim")) $("goDim").addEventListener("click",()=>{
+    const sel=readSel();
+    const ord=$("ordSw")&&$("ordSw").checked;
+    startDim(sel,dimAll?1e9:dimN,ord);
   });
+  if($("goDimAll")) $("goDimAll").addEventListener("click",()=>startDim({},BANK.length,false));
 }
 
 function startRandom(n){
@@ -603,7 +626,7 @@ function startDim(dims,n,ordered){
   const pool=BANK.filter(q=>Object.keys(dims).every(k=>dims[k].some(v=>dimVal(q,k).includes(v))));
   if(!pool.length){alert("当前筛选组合下没有题目。");return;}
   let picks;
-  if(ordered){picks=pool.map(q=>q.id);}   /* 套卷模式：整卷按题库原卷顺序 */
+  if(ordered){picks=pool.map(q=>q.id).slice(0,n);}   /* 套卷模式：按题库原卷顺序 */
   else{picks=shuffle(pool.map(q=>q.id),rng(hashSeed("dim-"+SUB.key+"-"+JSON.stringify(dims)+"-"+Date.now()))).slice(0,Math.min(n,pool.length));}
   S={mode:"dim",dims,ordered:!!ordered,total:picks.length,picks,ans:{},idx:0,done:false};
   saveSession(SUB.key+"_"+sessionKey(),S);
