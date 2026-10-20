@@ -44,7 +44,7 @@
 
   /* ===== 首页（宽布局，单列竖排） ===== */
   .home-grid{display:grid; grid-template-columns:1fr; gap:14px; margin-top:6px;}
-  .minirow{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:8px 0 2px;}
+  .minirow{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin:8px 0 2px;}
   .sep{height:1px; background:var(--line); margin:16px 0 10px;}
   .minibtn{display:flex; align-items:center; justify-content:center; gap:7px;
     background:var(--accent-soft); border:1px solid transparent; border-radius:999px;
@@ -398,7 +398,7 @@ const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"
 function metaText(){
   const bw=$("barwrap");
   if(!S){$("meta").textContent="";bw.classList.remove("on");$("prog").style.width="0%";return;}
-  const mn=S.mode==="daily"?"每日一练":(S.mode==="random"?"随机练习":(S.mode==="dim"?"维度练习":(S.mode==="flaw"?"错题重练":(S.mode==="favor"?"收藏重练":(S.mode==="mix"?"合并练习":"分类练习")))));
+  const mn=S.mode==="daily"?"每日一练":(S.mode==="random"?"随机练习":(S.mode==="dim"?"维度练习":(S.mode==="flaw"?"错题重练":(S.mode==="favor"?"收藏重练":"分类练习"))));
   $("meta").textContent=mn+" · "+(S.done?"已交卷":(S.idx)+" / "+S.total);
   bw.classList.add("on");
   $("prog").style.width=(S.done?100:(S.idx/S.total*100))+"%";
@@ -412,8 +412,7 @@ function renderHome(){
   let h='<div class="minirow">'
     +'<button class="minibtn" data-k="__favor">★ 收藏夹 <span class="cnt">'+window.FAVOR.questions.length+"</span></button>"
     +'<button class="minibtn" data-k="__flaw">错题本 <span class="cnt">'+window.FLAW.questions.length+"</span></button>"
-    +'<button class="minibtn mix" data-k="__merge">⇄ 合并做题</button>'
-    +'<button class="minibtn" data-k="__import">⤓ 导入题库</button>'
+    +'<button class="minibtn" data-k="__import">⤒ 导入题库</button>'
     +"</div>";
   h+='<div class="sep"></div>';
   h+='<div class="home-grid">';
@@ -440,7 +439,6 @@ function renderHome(){
     const k=b.dataset.k;
     if(k==="__flaw") renderFlawList("flaw");
     else if(k==="__favor") renderFlawList("favor");
-    else if(k==="__merge") enterMerge();
     else if(k==="__import") renderImport();
     else renderModes(k);
   }));
@@ -472,7 +470,7 @@ function migrateProcKeys(P){
         k2="question/guanzong.json_dm"+"tags="+tags.join(",")+"_o0_n"+S.total;
       }
       ns[k2]=S;
-    }else ns[k2]=v;
+    }else if(k2.indexOf("__mix_")!==0) ns[k2]=v;   /* 合并做题已移除，丢弃旧 __mix 会话 */
   });
   P.daily=nd;P.sessions=ns;return P;
 }
@@ -659,13 +657,11 @@ function sessionKey(){
   if(S.mode==="dim") return "dm"+Object.keys(S.dims).sort().map(k=>k+"="+S.dims[k].slice().sort().join(",")).join("|")+"_o"+(S.ordered?1:0)+"_n"+S.total;
   if(S.mode==="flaw") return "fl"+S.total;
   if(S.mode==="favor") return "fv"+S.total;
-  if(S.mode==="mix") return "mx"+S.total;
   return "tp"+(S.tags?S.tags.slice().sort().join(","):"")+S.total;
 }
-/* 返回路由：混合→配置页；错题/收藏→列表页；其余→科目模式页 */
+/* 返回路由：错题/收藏→列表页；其余→科目模式页 */
 function goBack(){
-  if(S&&S.mode==="mix") renderMix();
-  else if(S&&(S.mode==="flaw"||S.mode==="favor")) renderFlawList(FL_KIND);
+  if(S&&(S.mode==="flaw"||S.mode==="favor")) renderFlawList(FL_KIND);
   else renderModes(SUB.key);
 }
 /* 解析模式：标注选项对错并就地展开答案解析 */
@@ -759,137 +755,49 @@ function renderResult(){
   metaText();
 }
 
-/* ============ 合并做题 ============ */
-/* 合并范围（题库选择）自动保存；筛选维度动态收集自所有选题库的非核心字段，仅共有维度可用 */
-let MX={banks:new Set(),f:{},n:10};
-function mixSharedDims(){
-  const keys=[...MX.banks]; if(!keys.length) return [];
-  const decl=[];keys.forEach(k=>((window.BANK_DECL&&window.BANK_DECL[k])||[]).forEach(x=>{if(!decl.find(y=>y.key===x.key))decl.push(x);}));
-  const dims=collectDims(keys.map(k=>(window.BANKS[k]||[])),decl);
-  const out=[];
-  for(const d of dims){
-    const sets=keys.map(k=>{const s=new Set();(window.BANKS[k]||[]).forEach(q=>dimVal(q,d.key).forEach(x=>s.add(x)));return s;});
-    if(sets.length&&sets.every(s=>s.size)){
-      let acc=sets[0];
-      for(let i2=1;i2<sets.length;i2++){const r=new Set([...acc].filter(x=>sets[i2].has(x)));acc=r;}
-      if(acc.size){
-        const vals=[...acc];
-        const allNum=vals.every(v=>/^-?\d+(\.\d+)?$/.test(v));
-        vals.sort(allNum?(a,b)=>parseFloat(b)-parseFloat(a):(a,b)=>String(a).localeCompare(String(b),"zh"));
-        out.push({dim:d,vals});
-      }
-    }
-  }
-  return out;
-}
-function scopeSummary(){
-  return [...MX.banks].map(k=>{const s=SUBS.find(x=>x.key===k);return s?s.name:k;}).join("、")||"（未选择）";
-}
-function enterMerge(){
-  SUB={key:"__mix",name:"合并练习"};
-  S=null;metaText();
-  const saved=window.MERGE.banks.filter(k=>(window.BANKS[k]||[]).length);
-  if(saved.length){MX={banks:new Set(saved),f:{},n:10};$("app").className="mode";paintMix();}
-  else{$("app").className="mode";renderMergeScopeBody();}
-}
-function renderMergeScope(){
-  SUB={key:"__mix",name:"合并练习"};
-  S=null;metaText();
-  $("app").className="mode";
-  renderMergeScopeBody();
-}
-function renderMergeScopeBody(){
-  const banks=SUBS.filter(s=>(window.BANKS[s.key]||[]).length);
-  const sel=new Set(MX.banks);
-  let h='<div class="modebar"><button class="backbtn" id="backHome">‹ 返回</button><div class="t">合并范围</div></div>';
-  h+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:2px;">选择要合并的题库，设置自动保存，之后可从配置页再次修改</div>';
-  h+='<div class="mode scope-note"><div class="mt">选择题库</div><div class="chips" id="scopeChips">'
-    +'<button class="chip" data-all="1">全部</button>'
-    +banks.map(s=>'<button class="chip" data-k="'+s.key+'">'+esc(s.name)+" ("+((window.BANKS[s.key]||[]).length)+")</button>").join("")
-    +"</div></div>";
-  h+='<div class="chips"><button class="chip go" id="goScope">保存并继续</button></div>';
-  $("app").innerHTML=h;
-  $("backHome").addEventListener("click",renderHome);
-  const chips=$("scopeChips").querySelectorAll(".chip");
-  const refresh=()=>{const all=sel.size===banks.length;chips.forEach(b=>{if(b.dataset.all)b.classList.toggle("on",all);else b.classList.toggle("on",sel.has(b.dataset.k));});};
-  refresh();
-  chips.forEach(b=>b.addEventListener("click",()=>{
-    if(b.dataset.all){if(sel.size===banks.length)sel.clear();else banks.forEach(s=>sel.add(s.key));}
-    else{const k=b.dataset.k;if(sel.has(k))sel.delete(k);else sel.add(k);}
-    refresh();
-  }));
-  $("goScope").addEventListener("click",()=>{
-    if(!sel.size){alert("至少选择一个题库。");return;}
-    window.MERGE={banks:[...sel]};saveMerge();
-    MX={banks:new Set(sel),f:{},n:10};
-    paintMix();
-  });
-}
-function paintMix(){
-  const dims=mixSharedDims();
-  Object.keys(MX.f).forEach(k=>{if(!dims.find(d=>d.dim.key===k)) delete MX.f[k];});  /* 取消题库后剔除不再共有的筛选值 */
-  let h='<div class="modebar"><button class="backbtn" id="backHome">‹ 返回</button><div class="t">合并练习</div></div>';
-  h+='<div class="mode"><div class="qh" style="margin:0;">当前范围 <b>'+esc(scopeSummary())+'</b>'
-    +'<button class="linkbtn" id="editScope" style="margin-left:auto;">修改范围</button></div></div>';
-  if(!dims.length){
-    h+='<div style="font-size:12.5px;color:var(--muted);margin:4px 0 2px;">所选题库没有共有的可筛选字段，仅支持全部乱斗。</div>';
-  }else{
-    dims.forEach(d=>{
-      const sel=MX.f[d.dim.key]||new Set();
-      const allLabel="全部"+d.dim.label;
-      h+='<div class="mode"><div class="mt">'+esc(d.dim.label)+'</div><div class="chips" data-dim="'+d.dim.key+'">'
-        +'<button class="chip'+(sel.size?"":" on")+'" data-all="1">'+allLabel+"</button>"
-        +d.vals.map(v=>'<button class="chip'+(sel.has(v)?" on":"")+'" data-v="'+esc(v)+'">'+esc(v)+"</button>").join("")
-        +"</div></div>";
-    });
-  }
-  h+='<div class="mode"><div class="mt">题量</div><div class="chips" id="mixN">'
-    +[10,20,50].map(n=>'<button class="chip'+(n===MX.n?" on":"")+'" data-n="'+n+'">'+n+" 题</button>").join("")
-    +"</div></div>";
-  h+='<div class="chips"><button class="chip go" id="goMix">开始合并练习</button></div>';
-  $("app").innerHTML=h;
-  $("backHome").addEventListener("click",renderHome);
-  $("editScope").addEventListener("click",renderMergeScope);
-  if(dims.length){
-    dims.forEach(d=>{
-      const wrap=document.querySelector('.chips[data-dim="'+d.dim.key+'"]');
-      wrap.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{
-        if(!MX.f[d.dim.key]) MX.f[d.dim.key]=new Set();
-        if(b.dataset.all){MX.f[d.dim.key].clear();}
-        else{const v=b.dataset.v; if(MX.f[d.dim.key].has(v))MX.f[d.dim.key].delete(v); else MX.f[d.dim.key].add(v);}
-        paintMix();
-      }));
-    });
-  }
-  $("mixN").querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{MX.n=+b.dataset.n;paintMix();}));
-  $("goMix").addEventListener("click",()=>{
-    if(!MX.banks.size){alert("至少选择一个题库。");return;}
-    let bank=[...MX.banks].flatMap(k=>(window.BANKS[k]||[]));
-    Object.keys(MX.f).forEach(k=>{const set=MX.f[k];if(set&&set.size){bank=bank.filter(q=>dimVal(q,k).some(x=>set.has(x)));}});
-    if(!bank.length){alert("按当前筛选没有题目。");return;}
-    const n=Math.min(MX.n,bank.length);
-    const picks=shuffle(bank.map(q=>q.id),rng(hashSeed("mix-"+Date.now()))).slice(0,n);
-    BANK=bank;
-    S={mode:"mix",total:picks.length,picks,ans:{},idx:0,done:false};
-    saveSession(SUB.key+"_"+sessionKey(),S);
-    renderQuestion();scrollTop();
-  });
-}
-
 /* ============ Excel 导入 / 导出 ============ */
-const XLSX_CORE_HEAD=["ID","题号","题型","题干","A","B","C","D","E","答案","条件","解析","选项提示","只显选项字母"];
+const XLSX_CORE_HEAD=["ID","题号","题型","题干","A","B","C","D","E","答案","条件(充分性判断)","解析","选项提示","只显选项字母"];
 const XLSX_TYPE_ZH={single:"单选",suff:"充分性判断",browse:"浏览"};
 const XLSX_ZH_TYPE={};
 Object.keys(XLSX_TYPE_ZH).forEach(k=>XLSX_ZH_TYPE[XLSX_TYPE_ZH[k]]=k);
+/* HTML -> Excel 可读文本：段落转换行、还原实体；保留数学结构标签（frac/rt/qtbl/sup 等） */
+function xlsxText(html){
+  return String(html||"")
+    .replace(/\r\n/g,"\n")
+    .replace(/<\/p>\s*<p[^>]*>/gi,"\n")
+    .replace(/<p[^>]*>/gi,"")
+    .replace(/<\/p>/gi,"")
+    .replace(/<br\s*\/?>/gi,"\n")
+    .replace(/&nbsp;/g," ")
+    .replace(/&lt;/g,"<")
+    .replace(/&gt;/g,">")
+    .replace(/&quot;/g,'"')
+    .replace(/&amp;/g,"&")
+    .replace(/\n{3,}/g,"\n\n")
+    .trim();
+}
+/* Excel 文本 -> 题干/解析 HTML：纯文本按空行/换行分段包 <p>；已含标签则原样 */
+function xlsxHtml(text){
+  const t=String(text||"").replace(/\r\n/g,"\n").trim();
+  if(!t)return"";
+  if(/<[a-z][^>]*>/i.test(t))return t;
+  return t.split(/\n+/).map(x=>"<p>"+x+"</p>").join("");
+}
+/* 行内文本（选项/条件条目/提示条目）：已含标签原样，否则仅清理空白 */
+function xlsxInline(text){
+  const t=String(text||"").replace(/\r\n/g,"\n").trim();
+  return t;
+}
 function exportBank(){
   if(!window.XLSX){alert("Excel 组件未加载（vendor/xlsx.full.min.js 缺失）。");return;}
   const dims=collectDims([BANK],(window.BANK_DECL&&window.BANK_DECL[SUB.key])||[]);
   const headers=[...XLSX_CORE_HEAD,...dims.map(d=>d.label)];
   const rows=BANK.map(q=>{
     const r={"ID":q.id||"","题号":q.no!=null?q.no:"","题型":XLSX_TYPE_ZH[q.type]||q.type||"单选",
-      "题干":q.stem||"","答案":q.answer||"","条件":(q.cond||[]).join("\n"),"解析":q.analysis||"",
-      "选项提示":(q.QuestionHint||[]).join("\n"),"只显选项字母":q.No_Option_Details?"是":""};
-    ["A","B","C","D","E"].forEach(k=>{r[k]=(q.options&&q.options[k])||"";});
+      "题干":xlsxText(q.stem),"答案":q.answer||"","条件":(q.cond||[]).map(xlsxText).join("\n"),
+      "解析":xlsxText(q.analysis),"选项提示":(q.QuestionHint||[]).map(xlsxText).join("\n"),
+      "只显选项字母":q.No_Option_Details?"是":""};
+    ["A","B","C","D","E"].forEach(k=>{r[k]=xlsxText(q.options&&q.options[k]);});
     dims.forEach(d=>{r[d.label]=dimVal(q,d.key).join(",");});
     return r;
   });
@@ -902,8 +810,8 @@ function downloadTemplate(){
   if(!window.XLSX){alert("Excel 组件未加载。");return;}
   const headers=[...XLSX_CORE_HEAD,"年份","科目","分类"];
   const rows=[
-    {"ID":"demo-1","题号":1,"题型":"单选","题干":"<p>示例题干，支持 HTML 段落标签。</p>","A":"选项一","B":"选项二","C":"选项三","D":"","E":"","答案":"A","条件":"","解析":"<p>解析内容。</p>","选项提示":"","只显选项字母":"","年份":2024,"科目":"示例科目","分类":"示例分类"},
-    {"ID":"demo-2","题号":2,"题型":"充分性判断","题干":"<p>条件充分性判断题干。</p>","A":"","B":"","C":"","D":"","E":"","答案":"A","条件":"(1) 条件一\n(2) 条件二","解析":"<p>解析。</p>","选项提示":"(1) 条件一充分，条件二不充分\n(2) 条件二充分，条件一不充分","只显选项字母":"是","年份":2024,"科目":"示例科目","分类":"示例分类"}
+    {"ID":"demo-1","题号":1,"题型":"单选","题干":"<p>示例题干，支持 HTML 段落标签。</p>","A":"选项一","B":"选项二","C":"选项三","D":"","E":"","答案":"A","条件(充分性判断)":"","解析":"<p>解析内容。</p>","选项提示":"","只显选项字母":"","年份":2024,"科目":"示例科目","分类":"示例分类"},
+    {"ID":"demo-2","题号":2,"题型":"充分性判断","题干":"<p>条件充分性判断题干。</p>","A":"","B":"","C":"","D":"","E":"","答案":"A","条件(充分性判断)":"(1) 条件一\n(2) 条件二","解析":"<p>解析。</p>","选项提示":"(1) 条件一充分，条件二不充分\n(2) 条件二充分，条件一不充分","只显选项字母":"是","年份":2024,"科目":"示例科目","分类":"示例分类"}
   ];
   const ws=XLSX.utils.json_to_sheet(rows,{header:headers});
   const wb=XLSX.utils.book_new();
@@ -915,9 +823,9 @@ function renderImport(){
   S=null;metaText();
   $("app").className="mode";
   let h='<div class="modebar"><button class="backbtn" id="backHome">‹ 返回</button><div class="t">导入题库</div></div>';
-  h+='<div class="mode"><div class="mt">第一步 · 模板</div><div class="ms">下载 Excel 导入模板，按模板的列结构填题（表头勿改）</div>'
+  h+='<div class="mode"><div class="mt">第一步 · 模板</div><div class="ms">下载 Excel 导入模板，按模板的列结构填题（表头勿改）；题干/解析填纯文本即可，「条件」列仅充分性判断题需要，每行一条 (1)/(2)</div>'
     +'<div class="chips"><button class="chip go" id="tplBtn">⤓ 下载导入模板</button></div></div>';
-  h+='<div class="mode"><div class="mt">第二步 · 选择文件</div><div class="ms">支持 .xlsx；核心列之外的列自动识别为维度字段，逗号分隔为多值</div>'
+  h+='<div class="mode"><div class="mt">第二步 · 选择文件</div><div class="ms">支持 .xlsx；题干/解析可直接填纯文本（自动分段）；核心列之外的列自动识别为维度字段，逗号分隔为多值</div>'
     +'<div class="chips"><input type="file" id="impFile" accept=".xlsx,.xls" style="font-family:inherit;font-size:13px;"></div></div>';
   h+='<div class="mode" id="impPreview" style="display:none;"><div class="mt">第三步 · 确认并保存</div>'
     +'<div class="ms" id="impInfo"></div>'
@@ -971,13 +879,13 @@ function parseImportRows(rows,sheetName){
   });
   const qs=rows.map((r,i)=>{
     const q={id:String(r["ID"]||"").trim(),type:XLSX_ZH_TYPE[r["题型"]]||"single",
-      stem:String(r["题干"]||""),answer:String(r["答案"]||"").trim(),analysis:String(r["解析"]||"")};
+      stem:xlsxHtml(r["题干"]),answer:String(r["答案"]||"").trim(),analysis:xlsxHtml(r["解析"])};
     if(!q.id) throw new Error("第 "+(i+2)+" 行缺少 ID");
     if(r["题号"]!=="") q.no=+r["题号"];
-    const opts={};["A","B","C","D","E"].forEach(k=>{if(String(r[k]||"").trim())opts[k]=String(r[k]);});
+    const opts={};["A","B","C","D","E"].forEach(k=>{if(xlsxInline(r[k]))opts[k]=xlsxInline(r[k]);});
     if(Object.keys(opts).length) q.options=opts;
-    if(String(r["条件"]||"").trim()) q.cond=String(r["条件"]).split("\n").map(x=>x.trim()).filter(Boolean);
-    if(String(r["选项提示"]||"").trim()) q.QuestionHint=String(r["选项提示"]).split("\n").map(x=>x.trim()).filter(Boolean);
+    if(String(r["条件(充分性判断)"]||"").trim()) q.cond=String(r["条件(充分性判断)"]).split("\n").map(x=>xlsxInline(x)).filter(Boolean);
+    if(String(r["选项提示"]||"").trim()) q.QuestionHint=String(r["选项提示"]).split("\n").map(x=>xlsxInline(x)).filter(Boolean);
     if(String(r["只显选项字母"]||"").trim()) q.No_Option_Details=true;
     dimCols.forEach(col=>{
       const v=String(r[col]||"").trim();if(!v)return;
