@@ -1,10 +1,15 @@
 {
   "name": "示例题库",
   "desc": "演示数据格式，可删除",
+  "dims": [
+    {"key": "year", "label": "年份"},
+    {"key": "subject", "label": "科目"}
+  ],
   "questions": [
     {
       "id": "demo-001",
       "year": 2024,
+      "subject": "常识",
       "no": 1,
       "type": "single",
       "stem": "<p>地球绕太阳公转一周所需的时间大约是？</p>",
@@ -21,6 +26,7 @@
     {
       "id": "demo-002",
       "year": 2024,
+      "subject": "常识",
       "no": 2,
       "type": "suff",
       "stem": "<p>某数大于 10。</p>",
@@ -34,6 +40,7 @@
     {
       "id": "demo-003",
       "year": 2024,
+      "subject": "常识",
       "no": 3,
       "type": "browse",
       "stem": "<p>请简述「复利」与「单利」的区别。</p>",

@@ -239,13 +239,14 @@ const DAY_N=10;
 /* ============ 科目发现 ============
    服务模式下自动发现 question/ 下全部 .json（serve.py /api/list）；
    DATA_FILES 仅作 file:// 直开时的兜底登记，服务模式下无需改动。 */
-const DATA_FILES=["question/math.json","question/logic.json","question/writing.json"];
+const DATA_FILES=["question/guanzong.json"];
 let SUBS=[];
 window.FLAW={name:"错题本",desc:"答错的题自动收录",questions:[]};
 window.FAVOR={name:"收藏夹",desc:"收藏的题目",questions:[]};
 window.MERGE={banks:[]};
 async function boot(){
   window.BANKS={};
+  window.BANK_DECL={};
   let files=DATA_FILES;
   try{
     const r=await fetch("/api/list");
@@ -261,6 +262,7 @@ async function boot(){
       window.BANKS[file]=qs;
       sub.name=data.name||file;
       sub.desc=data.desc||"";
+      window.BANK_DECL[file]=Array.isArray(data.dims)?data.dims:[];
       qs.forEach(q=>{q._src=file;q._srcName=sub.name;});
       SUBS.push(sub);
     }catch(e){ /* 文件不存在或为空：不显示 */ }
@@ -276,18 +278,19 @@ async function boot(){
   /* 做题进度：proc.json 为准，localStorage 仅兜底 */
   window.PROC={daily:{},sessions:{}};
   try{const r=await fetch("userdata/proc.json?t="+Date.now());if(r.ok){const d=await r.json();if(d){window.PROC.daily=d.daily||{};window.PROC.sessions=d.sessions||{};}}}catch(e){}
+  window.PROC=migrateProcKeys(window.PROC);
   if(!Object.keys(window.PROC.daily).length&&!Object.keys(window.PROC.sessions).length){
-    try{const c=localStorage.getItem("gk_proc_cache");if(c){const d=JSON.parse(c);window.PROC=d;}}catch(e){}
+    try{const c=localStorage.getItem("gk_proc_cache");if(c){const d=JSON.parse(c);window.PROC=migrateProcKeys(d);saveProc();}}catch(e){}
   }
   /* 旧版迁移：gk_v2_data/xxx、gk_v3_data/xxx -> question/ 新键 */
   try{
     Object.keys(localStorage).filter(k=>k.indexOf("gk_v2_data/")===0).forEach(k=>{
-      const nk=k.replace("gk_v2_data/","question/");
+      const nk=k.replace("gk_v2_data/","question/").replace(/question\/(math|logic|writing)\.json/,"question/guanzong.json");
       const st=JSON.parse(localStorage.getItem(k));
       if(st&&!window.PROC.daily[nk]) window.PROC.daily[nk]=st;
     });
     Object.keys(localStorage).filter(k=>k.indexOf("gk_v3_data/")===0).forEach(k=>{
-      const nk=k.replace("gk_v3_data/","question/");
+      const nk=k.replace("gk_v3_data/","question/").replace(/question\/(math|logic|writing)\.json/,"question/guanzong.json");
       const st=JSON.parse(localStorage.getItem(k));
       if(st&&!window.PROC.sessions[nk]) window.PROC.sessions[nk]=st;
     });
@@ -394,7 +397,7 @@ const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"
 function metaText(){
   const bw=$("barwrap");
   if(!S){$("meta").textContent="";bw.classList.remove("on");$("prog").style.width="0%";return;}
-  const mn=S.mode==="daily"?"每日一练":(S.mode==="random"?"随机练习":(S.mode==="year"?S.year+" 年套卷":(S.mode==="flaw"?"错题重练":(S.mode==="favor"?"收藏重练":(S.mode==="mix"?"合并练习":"分类练习")))));
+  const mn=S.mode==="daily"?"每日一练":(S.mode==="random"?"随机练习":(S.mode==="dim"?"维度练习":(S.mode==="flaw"?"错题重练":(S.mode==="favor"?"收藏重练":(S.mode==="mix"?"合并练习":"分类练习")))));
   $("meta").textContent=mn+" · "+(S.done?"已交卷":(S.idx)+" / "+S.total);
   bw.classList.add("on");
   $("prog").style.width=(S.done?100:(S.idx/S.total*100))+"%";
@@ -441,14 +444,52 @@ function renderHome(){
   $("footer").textContent="题库共 "+Object.values(window.BANKS||{}).reduce((a,b)=>a+b.length,0)+" 题";
 }
 
+/* ===== 维度系统：核心字段之外的一切题目字段都是自由维度（由题库 JSON 提供，引擎不写死） ===== */
+/* 旧版三科文件键 -> 合并题库维度键（浏览器 localStorage 缓存升级用，幂等） */
+function migrateProcKeys(P){
+  const map=k=>k.replace(/question\/(math|logic|writing)\.json/g,"question/guanzong.json");
+  const nd={},ns={};
+  Object.keys(P.daily||{}).forEach(k=>{
+    const nk=map(k.replace(/^gk_v2_/,""));const v=P.daily[k];
+    if(nd[nk]){if(Object.keys(v.ans||{}).length>Object.keys(nd[nk].ans||{}).length)nd[nk]=v;}else nd[nk]=v;
+  });
+  Object.keys(P.sessions||{}).forEach(k=>{
+    const v=P.sessions[k];let k2=map(k.replace(/^gk_v3_/,""));
+    const m=k2.match(/^question\/guanzong\.json_(.+)$/);
+    if(m){
+      const tail=m[1];const S=Object.assign({},v);
+      if(/^y\d+$/.test(tail)){
+        const y=tail.slice(1);delete S.mode;delete S.year;
+        S.mode="dim";S.dims={year:[y]};S.ordered=true;
+        k2="question/guanzong.json_dm"+"year="+y+"_o1_n"+S.total;
+      }else if(/^tp/.test(tail)){
+        const mm=tail.slice(2).match(/^(.*?)(\d+)$/);
+        const tags=(mm?mm[1]:tail.slice(2)).split(",");delete S.mode;delete S.tags;
+        S.mode="dim";S.dims={tags:tags};S.ordered=false;
+        k2="question/guanzong.json_dm"+"tags="+tags.join(",")+"_o0_n"+S.total;
+      }
+      ns[k2]=S;
+    }else ns[k2]=v;
+  });
+  P.daily=nd;P.sessions=ns;return P;
+}
+const CORE_KEYS=new Set(["id","no","type","stem","options","answer","analysis","cond","QuestionHint","No_Option_Details","_src","_srcName"]);
+function dimVal(q,d){const v=q[d];if(v==null)return[];return(Array.isArray(v)?v:[v]).map(x=>String(x));}
+function collectDims(banks,decl){
+  const seen=new Set(),out=[];
+  const push=k=>{if(seen.has(k)||CORE_KEYS.has(k))return;seen.add(k);const d=(decl||[]).find(x=>x.key===k);out.push({key:k,label:(d&&d.label)?d.label:k});};
+  (decl||[]).forEach(d=>push(d.key));
+  banks.forEach(bank=>bank.forEach(q=>Object.keys(q).forEach(push)));
+  return out;
+}
+
 /* ============ 模式页（二级） ============ */
 function renderModes(key){
   SUB=SUBS.find(s=>s.key===key);
   BANK=(window.BANKS&&window.BANKS[key])||[];
   S=null;metaText();
   $("app").className="mode";
-  const tags=[...new Set(BANK.flatMap(q=>q.tags||[]))];
-  const years=[...new Set(BANK.map(q=>q.year))].sort((a,b)=>b-a);
+  const dims=collectDims([BANK],(window.BANK_DECL&&window.BANK_DECL[key])||[]);
   const st=window.PROC.daily[key];
   let dailyBtn="开始今日";
   if(st&&st.date===todayKey()){
@@ -475,16 +516,22 @@ function renderModes(key){
     +'<div class="chips" id="rndN">'+[10,20,50].map(nChip).join("")+"</div>"
     +'<div class="chips"><button class="chip go" id="goRandom">开始随机练习</button></div></div>';
 
-  h+='<div class="mode"><div class="tagrow" style="margin-bottom:0;"><div class="mt">按年份练习</div>'+resetBtn("year")+'</div><div class="ms">选择年份，按整套顺序练习</div>'
-    +'<div class="chips" id="yearChips">'+years.map(y=>'<button class="chip" data-y="'+y+'">'+y+"</button>").join("")+"</div></div>";
-
-  if(tags.length){
-    h+='<div class="mode"><div class="tagrow" style="margin-bottom:0;"><div class="mt">按分类练习</div>'+resetBtn("topic")+'</div><div class="ms">多选分类取交集，随机抽题练习</div>'
-      +'<div class="chips" id="tagChips">'+tags.map(t=>'<button class="chip" data-t="'+esc(t)+'">'+esc(t)+"</button>").join("")+"</div>"
-      +'<div class="chips" id="tpN">'+[10,20,50].map(nChip).join("")+"</div>"
-      +'<div class="chips"><button class="chip go" id="goTopic">开始专项</button></div></div>';
+  /* 按维度练习：维度与取值全部来自题库 JSON 自带字段，引擎不写死 */
+  h+='<div class="mode"><div class="tagrow" style="margin-bottom:0;"><div class="mt">按维度练习</div>'+resetBtn("dim")+'</div><div class="ms">筛选维度由题库自带字段提供：同维度取并集、跨维度取交集；勾选「套卷顺序」按原卷顺序整卷作答</div>';
+  if(!dims.length){
+    h+='<div class="ms" style="opacity:.6;">本题库没有自定义维度字段，仅支持每日/随机练习</div></div>';
   }else{
-    h+='<div class="mode" style="opacity:.5"><div class="mt">按分类练习</div><div class="ms">本科目暂无分类标签</div></div>';
+    h+='<div class="chips" id="dimOrd"><button class="chip" data-o="1">套卷顺序</button></div>';
+    dims.forEach(d=>{
+      const c=new Set();BANK.forEach(q=>dimVal(q,d.key).forEach(v=>c.add(v)));
+      const vals=[...c];
+      const allNum=vals.every(v=>/^-?\d+(\.\d+)?$/.test(v));
+      vals.sort(allNum?(a,b)=>parseFloat(b)-parseFloat(a):(a,b)=>String(a).localeCompare(String(b),"zh"));
+      h+='<div class="ms" style="margin:10px 0 2px;font-weight:700;color:var(--muted);font-size:12px;">'+esc(d.label)+'</div>';
+      h+='<div class="chips" data-dim="'+d.key+'">'+vals.map(v=>'<button class="chip" data-v="'+esc(v)+'">'+esc(v)+"</button>").join("")+"</div>";
+    });
+    h+='<div class="chips" id="dimN">'+[10,20,50].map(nChip).join("")+"</div>";
+    h+='<div class="chips"><button class="chip go" id="goDim">开始练习</button></div></div>';
   }
   $("app").innerHTML=h;
 
@@ -498,13 +545,18 @@ function renderModes(key){
   let rndN=10;chipGroup("rndN",n=>rndN=n);
   let tpN=10;if($("tpN"))chipGroup("tpN",n=>tpN=n);
   $("goRandom").addEventListener("click",()=>startRandom(rndN));
-  $("yearChips").querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>startYear(+b.dataset.y)));
-  if($("goTopic")) $("goTopic").addEventListener("click",()=>{
-    const sel=[...$("tagChips").querySelectorAll(".chip.on")].map(b=>b.dataset.t);
-    if(!sel.length){alert("先选至少选择一个分类标签。");return;}
-    startTopic(sel,tpN);
+  $("app").querySelectorAll('.chips[data-dim]').forEach(wrap=>wrap.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>b.classList.toggle("on"))));
+  if($("dimOrd")) $("dimOrd").querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>b.classList.toggle("on")));
+  let dimN=10;if($("dimN"))chipGroup("dimN",n=>dimN=n);
+  if($("goDim")) $("goDim").addEventListener("click",()=>{
+    const sel={};let any=false;
+    $("app").querySelectorAll('.chips[data-dim]').forEach(wrap=>{
+      const vs=[...wrap.querySelectorAll(".chip.on")].map(b=>b.dataset.v);
+      if(vs.length){sel[wrap.dataset.dim]=vs;any=true;}
+    });
+    if(!any){alert("先选至少一个筛选值。");return;}
+    startDim(sel,dimN,$("dimOrd")&&[...$("dimOrd").querySelectorAll(".chip.on")].length>0);
   });
-  if($("tagChips")) $("tagChips").querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>b.classList.toggle("on")));
 }
 
 function startRandom(n){
@@ -514,18 +566,14 @@ function startRandom(n){
   saveSession(SUB.key+"_rnd"+n,S);
   renderQuestion();scrollTop();
 }
-function startYear(y){
-  const picks=BANK.filter(q=>q.year===y).sort((a,b)=>a.no-b.no).map(q=>q.id);
-  S={mode:"year",year:y,total:picks.length,picks,ans:{},idx:0,done:false};
-  saveSession(SUB.key+"_y"+y,S);
-  renderQuestion();scrollTop();
-}
-function startTopic(tags,n){
-  const pool=BANK.filter(q=>(q.tags||[]).some(t=>tags.includes(t))).map(q=>q.id);
-  if(!pool.length){alert("这些分类下没有题目。");return;}
-  const picks=shuffle(pool,rng(hashSeed("tp-"+SUB.key+"-"+tags.join(",")+"-"+Date.now()))).slice(0,Math.min(n,pool.length));
-  S={mode:"topic",tags,total:picks.length,picks,ans:{},idx:0,done:false};
-  saveSession(SUB.key+"_tp"+tags.slice().sort().join(",")+n,S);
+function startDim(dims,n,ordered){
+  const pool=BANK.filter(q=>Object.keys(dims).every(k=>dims[k].some(v=>dimVal(q,k).includes(v))));
+  if(!pool.length){alert("当前筛选组合下没有题目。");return;}
+  let picks;
+  if(ordered){picks=pool.map(q=>q.id);}   /* 套卷模式：整卷按题库原卷顺序 */
+  else{picks=shuffle(pool.map(q=>q.id),rng(hashSeed("dim-"+SUB.key+"-"+JSON.stringify(dims)+"-"+Date.now()))).slice(0,Math.min(n,pool.length));}
+  S={mode:"dim",dims,ordered:!!ordered,total:picks.length,picks,ans:{},idx:0,done:false};
+  saveSession(SUB.key+"_"+sessionKey(),S);
   renderQuestion();scrollTop();
 }
 
@@ -534,7 +582,8 @@ function renderQuestion(){
   const chosen=S.ans[q.id];
   const isBrowse=q.type==="browse";
   let h='<div class="card">';
-  h+='<div class="tagrow"><span class="tag">'+q.year+" 年 · 第 "+q.no+" 题</span>";
+  h+='<div class="tagrow"><span class="tag">'+(q.year!=null?q.year+" 年 · ":"")+"第 "+(q.no!=null?q.no:"?")+" 题</span>";
+  if(q.subject) h+='<span class="tag gray">'+esc(q.subject)+"</span>";
   h+='<span class="tag gray">'+(q.type==="suff"?"条件充分性判断":(isBrowse?"浏览":"单选题"))+"</span>";
   h+='<span class="tag gray">'+(S.idx+1)+" / "+S.total+"</span>";
   h+='<button id="favBtn" class="linkbtn" style="margin-left:auto;">'+(isFav(q)?"★ 已收藏":"☆ 收藏")+"</button>"
@@ -602,7 +651,12 @@ function persist(){
   else saveSession(SUB.key+"_"+sessionKey(),S);
 }
 function sessionKey(){
-  return S.mode==="random"?("rnd"+S.total):(S.mode==="year"?("y"+S.year):(S.mode==="flaw"?("fl"+S.total):(S.mode==="favor"?("fv"+S.total):(S.mode==="mix"?("mx"+S.total):("tp"+S.tags.slice().sort().join(",")+S.total)))));
+  if(S.mode==="random") return "rnd"+S.total;
+  if(S.mode==="dim") return "dm"+Object.keys(S.dims).sort().map(k=>k+"="+S.dims[k].slice().sort().join(",")).join("|")+"_o"+(S.ordered?1:0)+"_n"+S.total;
+  if(S.mode==="flaw") return "fl"+S.total;
+  if(S.mode==="favor") return "fv"+S.total;
+  if(S.mode==="mix") return "mx"+S.total;
+  return "tp"+(S.tags?S.tags.slice().sort().join(","):"")+S.total;
 }
 /* 返回路由：混合→配置页；错题/收藏→列表页；其余→科目模式页 */
 function goBack(){
@@ -630,7 +684,7 @@ function showImmediate(q,chosen){
 }
 /* 重置某模式练习进度 */
 function resetMode(key,mode){
-  const names={daily:"每日一练",random:"随机练习",year:"按年份练习",topic:"分类练习"};
+  const names={daily:"每日一练",random:"随机练习",dim:"维度练习",year:"按年份练习",topic:"分类练习"};
   if(!confirm("确定重置「"+names[mode]+"」的练习进度？")) return;
   if(mode==="daily"){delete window.PROC.daily[key];saveProc();}
   else{
@@ -639,6 +693,7 @@ function resetMode(key,mode){
       if(mode==="random"&&k.indexOf("_rnd")<0) return;
       if(mode==="year"&&!/_y\d+$/.test(k)) return;
       if(mode==="topic"&&k.indexOf("_tp")<0) return;
+      if(mode==="dim"&&k.indexOf("_dm")<0) return;
       delete window.PROC.sessions[k];
     });
     saveProc();
@@ -701,21 +756,24 @@ function renderResult(){
 }
 
 /* ============ 合并做题 ============ */
-/* 合并范围（题库选择）自动保存；筛选维度由题库 JSON 提供，不写死，仅共有字段可用 */
-const MIX_DIMS=[
-  {key:"year",label:"按年份练习",get:q=>q.year==null?null:+q.year},
-  {key:"tags",label:"按分类练习",get:q=>(q.tags||[])}
-];
+/* 合并范围（题库选择）自动保存；筛选维度动态收集自所有选题库的非核心字段，仅共有维度可用 */
 let MX={banks:new Set(),f:{},n:10};
 function mixSharedDims(){
   const keys=[...MX.banks]; if(!keys.length) return [];
+  const decl=[];keys.forEach(k=>((window.BANK_DECL&&window.BANK_DECL[k])||[]).forEach(x=>{if(!decl.find(y=>y.key===x.key))decl.push(x);}));
+  const dims=collectDims(keys.map(k=>(window.BANKS[k]||[])),decl);
   const out=[];
-  for(const d of MIX_DIMS){
-    const sets=keys.map(k=>{const s=new Set();(window.BANKS[k]||[]).forEach(q=>{const v=d.get(q);if(v==null)return;(Array.isArray(v)?v:[v]).forEach(x=>s.add(x));});return s;});
+  for(const d of dims){
+    const sets=keys.map(k=>{const s=new Set();(window.BANKS[k]||[]).forEach(q=>dimVal(q,d.key).forEach(x=>s.add(x)));return s;});
     if(sets.length&&sets.every(s=>s.size)){
       let acc=sets[0];
       for(let i2=1;i2<sets.length;i2++){const r=new Set([...acc].filter(x=>sets[i2].has(x)));acc=r;}
-      if(acc.size) out.push({dim:d,vals:[...acc].sort((a,b)=>typeof a==="number"?(b-a):String(a).localeCompare(String(b)))});
+      if(acc.size){
+        const vals=[...acc];
+        const allNum=vals.every(v=>/^-?\d+(\.\d+)?$/.test(v));
+        vals.sort(allNum?(a,b)=>parseFloat(b)-parseFloat(a):(a,b)=>String(a).localeCompare(String(b),"zh"));
+        out.push({dim:d,vals});
+      }
     }
   }
   return out;
@@ -774,10 +832,10 @@ function paintMix(){
   }else{
     dims.forEach(d=>{
       const sel=MX.f[d.dim.key]||new Set();
-      const allLabel=d.dim.key==="year"?"全部年份":"全部分类";
+      const allLabel="全部"+d.dim.label;
       h+='<div class="mode"><div class="mt">'+esc(d.dim.label)+'</div><div class="chips" data-dim="'+d.dim.key+'">'
         +'<button class="chip'+(sel.size?"":" on")+'" data-all="1">'+allLabel+"</button>"
-        +d.vals.map(v=>'<button class="chip'+(sel.has(v)?" on":"")+'" data-v="'+esc(v)+'">'+esc(v)+(d.dim.key==="year"?" 年":"")+"</button>").join("")
+        +d.vals.map(v=>'<button class="chip'+(sel.has(v)?" on":"")+'" data-v="'+esc(v)+'">'+esc(v)+"</button>").join("")
         +"</div></div>";
     });
   }
@@ -803,7 +861,7 @@ function paintMix(){
   $("goMix").addEventListener("click",()=>{
     if(!MX.banks.size){alert("至少选择一个题库。");return;}
     let bank=[...MX.banks].flatMap(k=>(window.BANKS[k]||[]));
-    Object.keys(MX.f).forEach(k=>{const set=MX.f[k];if(set&&set.size){const d=MIX_DIMS.find(x=>x.key===k);bank=bank.filter(q=>{const v=d.get(q);if(v==null)return false;const arr=Array.isArray(v)?v:[v];return arr.some(x=>set.has(x));});}});
+    Object.keys(MX.f).forEach(k=>{const set=MX.f[k];if(set&&set.size){bank=bank.filter(q=>dimVal(q,k).some(x=>set.has(x)));}});
     if(!bank.length){alert("按当前筛选没有题目。");return;}
     const n=Math.min(MX.n,bank.length);
     const picks=shuffle(bank.map(q=>q.id),rng(hashSeed("mix-"+Date.now()))).slice(0,n);

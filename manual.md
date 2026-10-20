@@ -7,154 +7,99 @@
 ```
 管综题库/
 ├── index.html        前端（引擎，无需改动）
-├── serve.py          本地服务（静态 + 写接口）
-├── serve.py           启动脚本（python serve.py）
-├── question/         题库目录：只放题库 json
-│   ├── math.json
-│   ├── logic.json
-│   └── writing.json
+├── serve.py          本地服务（静态 + 写接口），python serve.py 启动
+├── question/         题库目录：只放题库 json（自动发现，无需改码）
+│   ├── guanzong.json 管综真题（单文件维度化题库）
+│   └── sample.json   示例题库
 └── userdata/         用户数据目录（自动生成，可定期备份）
     ├── flaw.json     错题本
     ├── favor.json    收藏夹
-    └── proc.json     做题进度
+    ├── proc.json     做题进度
+    └── merge.json    合并做题范围
 ```
 
 ## 一、题库文件（question/*.json）
+
+一个 JSON 文件 = 一个题库。一个题库内可以混合任意「类型」的题目（如数学/逻辑/写作），类型通过**自定义维度字段**区分，引擎动态识别，不写死。
 
 ### 顶层结构
 
 ```json
 {
-  "name": "数学",
-  "desc": "管理类联考历年真题",
+  "name": "管综真题",
+  "desc": "2009-2025 管理类综合能力真题",
+  "dims": [
+    {"key": "year", "label": "年份"},
+    {"key": "subject", "label": "科目"},
+    {"key": "tags", "label": "分类"}
+  ],
   "questions": [ ... ]
 }
 ```
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| `name` | 是 | 科目名，显示在首页卡片 |
-| `desc` | 否 | 副标题描述，显示在卡片与模式页 |
-| `questions` | 是 | 题目数组 |
+| `name` | 是 | 题库名，显示在首页卡片 |
+| `desc` | 否 | 副标题描述 |
+| `dims` | 否 | 维度声明：`key` 对应题目里的自定义字段名，`label` 是界面显示名。只影响显示文案与排序，**不声明也能用**（引擎自动从题目字段发现维度，label 直接用字段名） |
+| `questions` | 是 | 题目数组。**数组顺序即「套卷顺序」**——勾选「套卷顺序」时按此顺序作答 |
 
 ### 题目字段
 
-```json
-{
-  "id": "2009-01",
-  "year": 2009,
-  "no": 1,
-  "type": "single",
-  "stem": "<p>题干，支持 HTML</p>",
-  "options": {"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D", "E": "选项E"},
-  "answer": "E",
-  "analysis": "<p>解析，支持 HTML</p>",
-  "tags": ["应用题"]
-}
-```
+题目 = **核心字段**（引擎认识）+ **自定义维度字段**（引擎不认识、动态发现）。
+
+核心字段：
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| `id` | **是（关键）** | 题目唯一标识。**进度、错题、收藏都以它为准**：题库删除后重新放入时，只要 id 不变，进度原样恢复。建议 `年份-序号` 格式 |
-| `year` | 否 | 年份（数字）。驱动「按年份练习」模式；缺失则该题不进入年份列表 |
-| `no` | 否 | 题号（数字）。年份模式下按它排序，建议从 1 连续 |
-| `type` | 是 | `single` 单选题 / `suff` 条件充分性判断 / `browse` 浏览（无选项不判分，用于主观题） |
-| `stem` | 是 | 题干，HTML 字符串。支持 `<p>` `<sup>` `<sub>` `<table class="qtbl">` `<span class="frac">` 等 |
-| `options` | single 必填 | `{"A".."E": "选项文本"}`，选项文本同样支持 HTML |
-| `cond` | suff 必填 | 条件数组：`["（1）……", "（2）……"]` |
-| `answer` | single/suff 必填 | 正确答案字母 `A`–`E`。browse 类型不需要 |
-| `analysis` | 否 | 解析，HTML 字符串 |
-| `tags` | 否 | 分类标签数组，如 `["应用题"]`。驱动「按分类练习」模式；多选标签时取**并集**筛选。缺失或不含 tags 的题目不参与分类练习 |
-| `QuestionHint` | 否 | 「选项含义」折叠区的文本数组。缺省时 suff 题使用内置的充分性判断说明，single 题无折叠区 |
-| `No_Option_Details` | 否 | `true` 时选项只显示字母圈、隐藏文本（适合选项很长的题型） |
+| `id` | 是 | 全局唯一标识，进度/错题/收藏都挂在它上面，**建档后不可更改** |
+| `type` | 是 | `single` 单选 / `suff` 条件充分性判断 / `browse` 浏览（无选项，只看解析） |
+| `stem` | 是 | 题干（HTML，可用 `<p>` 等） |
+| `options` | single/suff 必填 | `{ "A": "选项文本", ... }` |
+| `answer` | 是 | 正确答案字母（browse 可空） |
+| `analysis` | 是 | 解析（HTML） |
+| `no` | 否 | 卷面题号，显示用 |
+| `cond` | 否 | suff 题的条件列表（字符串数组） |
+| `QuestionHint` | 否 | 选项含义提示（字符串数组，折叠显示） |
+| `No_Option_Details` | 否 | `true` 时选项只显示字母不显示文本 |
 
-### 题型渲染行为
+自定义维度字段（示例，**完全自由**，可以没有、也可以叫别的名字）：
 
-| type | 渲染 | 判分 |
+| 示例字段 | 取值 | 引擎行为 |
 |---|---|---|
-| `single` | 题干 + A–E 选项 | 按 `answer` 判对错 |
-| `suff` | 题干 + 条件区（cond）+ 固定 A–E 选项 | 同上；选项区支持 `No_Option_Details` |
-| `browse` | 题干 + 「参考分析」折叠 | 不判分；结果页显示「已浏览 N 篇」 |
+| `year` | `2015`（标量） | 出现为「年份」筛选项；数值自动降序排列 |
+| `subject` | `"管综数学"` | 出现为「科目」筛选项；做题页显示为标签 |
+| `tags` | `["数列","函数"]`（数组） | 多值维度：同维度多选=并集，跨维度=交集 |
 
-### HTML 排版速查（stem / options / analysis 内可用）
+- 维度取值支持标量或字符串数组，引擎统一按字符串比较。
+- 想加新维度（如 `chapter`、`difficulty`）直接在题目上加字段即可，界面自动出现对应筛选，无需改代码。
+- 避免使用核心字段名。
 
-- `<span class="frac"><span>分子</span><span>分母</span></span>` —— 分数
-- `√` 直接用字符；根号覆盖用 `<span class="rt">…</span>`
-- `<sup>2</sup>` / `<sub>1</sub>` —— 上下标
-- `<table class="qtbl"><tr><th>…</th></tr>…</table>` —— 数据表格
+### HTML 书写速查
 
-## 二、用户数据文件（userdata/，自动维护，一般不用手改）
+| 写法 | 效果 |
+|---|---|
+| `<p>...</p>` | 段落 |
+| `<span class="frac"><span>a</span><span>b</span></span>` | 分数 a/b |
+| `<span class="rt">x</span>` | 根号 |
+| `<table class="qtbl">...</table>` | 紧凑表格 |
+| `x<sup>2</sup>` | 上标 |
 
-### flaw.json（错题本）
+## 二、用户数据（userdata/*.json）
 
-答错自动收录（解析模式即时收、普通模式交卷时收），按 `科目+id` 去重并累计错误次数：
+- `proc.json`：`{"daily":{题库键:当日状态},"sessions":{题库键_模式键:会话}}`。进度绑定「题库文件路径 + 题目 id」——题库删除后重新放入（同 id），进度自动恢复。
+- `flaw.json` / `favor.json`：`{"name","desc","questions":[...]}`，每条含 `subject`（题库路径）、`subjectName`（题库名）、`id` 及题目快照。
+- `merge.json`：`{"banks":[...]}` 合并做题的题库范围，自动保存。
+- `userdata/` 整目录删除后，服务会在下次写入时自动重建；浏览器 localStorage 有同内容兜底缓存。
 
-```json
-{
-  "name": "错题本",
-  "desc": "答错的题自动收录",
-  "questions": [
-    {
-      "id": "2009-01", "year": 2009, "no": 1, "type": "single",
-      "stem": "……", "options": { "A": "……" }, "answer": "E", "analysis": "……",
-      "tags": ["应用题"],
-      "subject": "question/math.json", "subjectName": "数学",
-      "myAnswer": "A", "wrongCount": 2, "lastWrong": "2026-10-20", "source": "daily"
-    }
-  ]
-}
-```
+## 三、添加新题库（3 步）
 
-条目 = 题目完整快照 + `subject`（来源题库文件）/ `subjectName` / `myAnswer` / `wrongCount` / `lastWrong` / `source`（来源模式：daily/random/year/topic/flaw/favor）。
+1. 按上述结构写一个 JSON，放进 `question/`
+2. 刷新页面，服务通过 `/api/list` 自动发现，无需改代码
+3. 题目里的自定义字段会自动变成筛选项；建议在顶层 `dims` 里声明中文 label
 
-### favor.json（收藏夹）
+## 四、serve.py API
 
-```json
-{
-  "name": "收藏夹",
-  "questions": [
-    { "id": "2009-01", "……": "题目快照", "subject": "question/math.json", "subjectName": "数学", "favAt": "2026-10-20" }
-  ]
-}
-```
-
-### proc.json（做题进度）
-
-```json
-{
-  "daily": {
-    "question/math.json": {
-      "order": ["2009-01", "……"],
-      "cursor": 130,
-      "date": "2026-10-20",
-      "picks": ["……"],
-      "ans": { "2009-01": "E" },
-      "idx": 3,
-      "done": false
-    }
-  },
-  "sessions": {
-    "question/math.json_rnd10": { "……": "同 daily 结构 + date" }
-  }
-}
-```
-
-- `daily`：每科目一份「每日一练」状态。`order` 是整库洗牌后的题目 id 序列，`cursor` 是下一次取题的偏移；跨天自动向后取 10 题，取完重新洗牌
-- `sessions`：随机 / 年份 / 分类 / 错题重练 / 收藏重练的进行中局，同日刷新页面可续，跨天自动清空
-- **进度与「题库文件路径 + 题目 id」绑定**：题库删掉再放回（文件名与 id 不变）即可无损续练
-
-## 三、添加一个新科目
-
-1. 把题库 json 放入 `question/`，例如 `english.json`
-2. 打开 `index.html`，在 `DATA_FILES` 数组里加一行路径：
-   ```js
-   const DATA_FILES=["question/math.json","question/logic.json","question/writing.json","question/english.json"];
-   ```
-3. 刷新页面。文件不存在或 questions 为空时该科目自动隐藏，无需其他改动
-
-## 四、本地服务与接口（serve.py）
-
-- 默认 `http://127.0.0.1:8123`，仅监听本机回环，局域网无法访问
-- `GET` 静态文件：index.html、question/、userdata/
-- `POST /api/flaw`、`POST /api/favor`、`POST /api/proc`：分别写 userdata/ 下对应文件（临时文件 + 原子替换，不会写坏）
-- 必须通过 serve.py 启动（`python serve.py`，默认 http://127.0.0.1:8123）；直接双击 index.html（file:// 打开）时写接口不可用，自动降级为浏览器 localStorage 暂存
+- `GET /api/list`：列出 `question/` 下全部 .json
+- `POST /api/flaw|favor|proc|merge`：写入对应 userdata 文件（原子替换；userdata 缺失自动重建；proc/merge 免 `questions` 结构检查）
+- 必须通过 `python serve.py` 启动；直接双击 index.html（file:// 打开）时写接口不可用，自动降级为浏览器 localStorage 暂存
