@@ -8,7 +8,7 @@
 管综题库/
 ├── index.html        前端（引擎，无需改动）
 ├── serve.py          本地服务（静态 + 写接口）
-├── server.bat        双击启动（Windows）
+├── serve.py           启动脚本（python serve.py）
 ├── question/         题库目录：只放题库 json
 │   ├── math.json
 │   ├── logic.json
@@ -157,4 +157,4 @@
 - 默认 `http://127.0.0.1:8123`，仅监听本机回环，局域网无法访问
 - `GET` 静态文件：index.html、question/、userdata/
 - `POST /api/flaw`、`POST /api/favor`、`POST /api/proc`：分别写 userdata/ 下对应文件（临时文件 + 原子替换，不会写坏）
-- 必须通过 server.bat / serve.py 启动；直接双击 index.html（file:// 打开）时写接口不可用，自动降级为浏览器 localStorage 暂存
+- 必须通过 serve.py 启动（`python serve.py`，默认 http://127.0.0.1:8123）；直接双击 index.html（file:// 打开）时写接口不可用，自动降级为浏览器 localStorage 暂存
