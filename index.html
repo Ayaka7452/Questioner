@@ -131,6 +131,10 @@
   .setbtn{margin-left:auto; display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:999px; background:var(--card); border:1px solid var(--line); color:var(--muted); cursor:pointer; padding:0; transition:color .15s, border-color .15s;}
   .setbtn:hover{color:var(--accent); border-color:var(--accent);}
   .setbtn svg.ic{width:17px; height:17px; margin:0;}
+  /* 题库页右上角齿轮：与顶栏设置齿轮同规格（34×34 居中、17px、margin 0），避免小尺寸发虚/偏心 */
+  .gear-ico{width:34px; height:34px; padding:0; display:flex; align-items:center; justify-content:center; margin-left:auto; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; transition:color .15s, border-color .15s, background .15s;}
+  .gear-ico:hover{color:var(--accent); border-color:var(--accent); background:var(--accent-soft);}
+  .gear-ico svg.ic{width:17px; height:17px; margin:0; vertical-align:0;}
   .setpanel{position:absolute; right:0; top:calc(100% + 6px); width:300px; max-width:calc(100vw - 32px); background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 32px rgba(16,24,40,.18); padding:14px 16px 16px; z-index:60; display:none;}
   .setpanel.on{display:block;}
   .sp-t{font-size:12px; font-weight:700; color:var(--muted); letter-spacing:.5px; margin:2px 0 8px;}
@@ -590,7 +594,7 @@ function renderModes(key){
     else {const n=Object.keys(st.ans||{}).length;dailyBtn="继续练习";dailyStat="已做 "+n+" / "+st.total;}
   }
   const nChip=(n,on)=>'<button class="chip'+(on?" on":"")+'" data-n="'+n+'">'+n+"</button>";
-  let h='<div class="modebar" style="position:relative;"><button class="backbtn" id="backHome">'+icon("back")+" 返回</button><div class='t'>"+esc(SUB.name)+'</div><button class="backbtn" id="gearBtn" title="更多" style="margin-left:auto;padding:8px 10px;">'+icon("gear")+'</button><div class="gearmenu" id="gearMenu"><div class="gm-t">题库</div><button data-act="export">'+icon("up")+' 导出 Excel</button><button data-act="reset" class="danger">'+icon("reset")+' 重置全部进度</button></div></div>';
+  let h='<div class="modebar" style="position:relative;"><button class="backbtn" id="backHome">'+icon("back")+" 返回</button><div class='t'>"+esc(SUB.name)+'</div><button class="gear-ico" id="gearBtn" title="更多">'+icon("gear")+'</button><div class="gearmenu" id="gearMenu"><div class="gm-t">题库</div><button data-act="export">'+icon("up")+' 导出 Excel</button><button data-act="reset" class="danger">'+icon("reset")+' 重置全部进度</button></div></div>';
   h+='<div style="display:flex;align-items:center;justify-content:space-between;margin:10px 2px 2px;">'
     +'<span style="font-size:12.5px;color:var(--muted);">'+BANK.length+" 题"+(SUB.desc?" · "+esc(SUB.desc):"")+"</span>"
     +((!BANK.every(q=>q.type==="browse"))?'<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);">解析模式<label class="sw"><input type="checkbox" id="immSw"'+(loadState("gk_imm_"+key)==="1"?" checked":"")+'><i></i></label></span>':"")
