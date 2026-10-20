@@ -249,7 +249,7 @@ async function boot(){
   window.BANK_DECL={};
   let files=DATA_FILES;
   try{
-    const r=await fetch("/api/list");
+    const r=await fetch("/api/list?t="+Date.now());
     if(r.ok){const ls=await r.json();if(Array.isArray(ls)&&ls.length)files=ls.map(f=>"question/"+f);}
   }catch(e){ /* file:// 直开时回退 DATA_FILES */ }
   await Promise.all(files.map(async file=>{

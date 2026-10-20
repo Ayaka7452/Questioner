@@ -15,6 +15,10 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
 
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")   # 本地开发服务禁用缓存，杜绝旧列表/旧页面
+        super().end_headers()
+
     def do_GET(self):
         if self.path == "/api/list":
             """自动发现题库：列出 question/ 下全部 .json 文件"""
