@@ -529,7 +529,11 @@ function toggleFav(q){
 const SUFF_OPTIONS={A:"条件（1）充分，但条件（2）不充分",B:"条件（2）充分，但条件（1）不充分",C:"条件（1）和（2）单独都不充分，但联合起来充分",D:"条件（1）充分，条件（2）也充分",E:"条件（1）和（2）单独都不充分，联合起来也不充分"};
 let SUB=null,BANK=[],S=null;
 const byId=id=>BANK.find(q=>q.id===id);
-const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+/* 文本清洗：滤掉从 Word/PDF 复制带入的控制字符、私用区字符与零宽字符，
+   否则浏览器缺字形时会渲染成小方块（豆腐块） */
+const DIRTY=/[\u007f\u0080-\u009f\ue000-\uf8ff\u200b\u200c\u200d\ufeff\u00ad]/g;
+const clean=s=>String(s).replace(DIRTY,"");
+const esc=s=>clean(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 
 function metaText(){
   const bw=$("barwrap");

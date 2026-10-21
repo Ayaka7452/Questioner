@@ -4,6 +4,8 @@
 接口：POST /api/flaw   body=错题json  -> 写 userdata/flaw.json
       POST /api/favor  body=收藏json  -> 写 userdata/favor.json
       POST /api/proc   body=进度json  -> 写 userdata/proc.json
+      POST /api/ui     body=界面偏好  -> 写 userdata/ui.json
+      POST /api/import|/api/bank 题库落盘前会清洗 Word/PDF 带入的乱码字符
 """
 import json, os, re, sys
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -42,6 +44,20 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    # 题库文本清洗：从 Word/PDF 复制带入的控制字符、私用区字符、零宽字符，
+    # 浏览器缺字形时会渲染成小方块（豆腐块），落盘前统一滤掉
+    DIRTY_RE = re.compile("[\u007f\u0080-\u009f\ue000-\uf8ff\u200b\u200c\u200d\ufeff\u00ad]")
+
+    @staticmethod
+    def _sanitize(obj):
+        if isinstance(obj, str):
+            return Handler.DIRTY_RE.sub("", obj)
+        if isinstance(obj, list):
+            return [Handler._sanitize(x) for x in obj]
+        if isinstance(obj, dict):
+            return {k: Handler._sanitize(v) for k, v in obj.items()}
+        return obj
+
     def _handle_import(self):
         try:
             n = int(self.headers.get("Content-Length", 0))
@@ -58,6 +74,7 @@ class Handler(SimpleHTTPRequestHandler):
         ids = [q.get("id") for q in data["questions"]]
         if not all(ids) or len(set(ids)) != len(ids):
             self._json_response(400, {"message": "ID 缺失或重复"}); return
+        data = Handler._sanitize(data)   # 落盘前清洗乱码字符，避免页面渲染出豆腐块
         dst = os.path.join(ROOT, "question", fn)
         if os.path.exists(dst):
             self._json_response(409, {"message": "同名题库已存在，请换一个名称"}); return
@@ -86,6 +103,7 @@ class Handler(SimpleHTTPRequestHandler):
         ids = [q.get("id") for q in data["questions"]]
         if not all(ids) or len(set(ids)) != len(ids):
             self._json_response(400, {"message": "ID 缺失或重复"}); return
+        data = Handler._sanitize(data)   # 落盘前清洗乱码字符，避免页面渲染出豆腐块
         tmp = dst + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=1)
